@@ -37,6 +37,15 @@ String mqttclientid = "";
 String mqttuser = "";
 String mqttpassword = "";
 
+static const PROGMEM uint8_t delog[] = { 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
+		1, 1, 1, 1, 1, 1, 1, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 4, 4, 4, 4, 4, 4, 4, 4, 4, 5, 5, 5, 5,
+		5, 5, 5, 5, 6, 6, 6, 6, 6, 6, 6, 7, 7, 7, 7, 7, 8, 8, 8, 8, 8, 9, 9, 9, 9, 9, 10, 10, 10, 10, 11, 11, 11, 11, 12, 12, 12, 12, 13, 13, 13, 14,
+		14, 14, 15, 15, 15, 16, 16, 16, 17, 17, 18, 18, 18, 19, 19, 20, 20, 21, 21, 22, 22, 23, 23, 24, 24, 25, 25, 26, 26, 27, 28, 28, 29, 30, 30,
+		31, 32, 32, 33, 34, 35, 35, 36, 37, 38, 39, 40, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 51, 52, 53, 54, 55, 56, 58, 59, 60, 62, 63, 64, 66,
+		67, 69, 70, 72, 73, 75, 77, 78, 80, 82, 84, 86, 88, 90, 91, 94, 96, 98, 100, 102, 104, 107, 109, 111, 114, 116, 119, 122, 124, 127, 130, 133,
+		136, 139, 142, 145, 148, 151, 155, 158, 161, 165, 169, 172, 176, 180, 184, 188, 192, 196, 201, 205, 210, 214, 219, 224, 229, 234, 239, 244,
+		250, };
+
 const char* publisher_json_id = "json";
 
 //const char* publisher_temp_id = "temp";
@@ -48,6 +57,7 @@ const char* publisher_motion_id = "motion";
 
 //const char* subscriber_led_id = "led";
 const char* subscriber_rgb_id = "rgb";
+const char* subscriber_hsl_id = "hsl";
 const char* subscriber_rgb_switch_id = "switch";
 const char* subscriber_setupmode_id = "setup";
 
@@ -56,6 +66,7 @@ unsigned int dopubsw = 0;
 unsigned int dopubmotion = 0;
 
 uint16_t pwms[PWMCHAN];
+uint16_t hsls[PWMCHAN];
 
 int lux, oldlux = 0;
 
@@ -219,7 +230,9 @@ void connect() {
 	client.subscribe(mqttdevice + "." + mqttlocation + "." + subscriber_rgb_switch_id);
 	client.subscribe(mqttdevice + "." + mqttlocation + "." + subscriber_setupmode_id);
 	for (int i = 0; i < PWMCHAN; i++) {
+		Serial.println("Subscribe: " + mqttdevice + "." + mqttlocation + "." + subscriber_hsl_id + "." + i);
 		client.subscribe(mqttdevice + "." + mqttlocation + "." + subscriber_rgb_id + "." + i);
+		client.subscribe(mqttdevice + "." + mqttlocation + "." + subscriber_hsl_id + "." + i);
 		client.subscribe(mqttdevice + "." + mqttlocation + "." + subscriber_rgb_id + "." + i + "." + subscriber_rgb_switch_id);
 	}
 
@@ -322,6 +335,57 @@ void dumpPwms(uint16_t *values) {
 	}
 }
 
+void getRGB(uint16_t *hsl, uint16_t *pwm, uint16_t index) {
+	// I feel I should explain fixed point arithmetic in more detail, but this is
+	// is not the place.
+	uint16_t h = hsl[index];
+	uint16_t s = hsl[index + 1];
+	uint16_t v = hsl[index + 2];
+
+	uint16_t *r = &pwm[index];
+	uint16_t *g = &pwm[index + 1];
+	uint16_t *b = &pwm[index + 2];
+
+	uint8_t sector = h / 60U;
+	uint8_t remainder = (h - sector * 60U) * 64U / 15U;  // 64/15 is really 256/60, but lets stay clear of overflows
+	uint8_t p = v * (255U - s) / 255U;  // s and v are (0.0..1.0) --> (0..255), p is (0..255^2)
+	uint8_t q = v * (255UL * 255UL - ((long) s) * remainder) / (255UL * 255UL);  // look, fixed point arithmetic in varying encodings
+	uint8_t t = v * (255UL * 255UL - ((long) s) * (255U - remainder)) / (255UL * 255UL);
+
+	switch (sector) {
+	case 0:
+		*r = v;
+		*g = t;
+		*b = p;
+		break;
+	case 1:
+		*r = q;
+		*g = v;
+		*b = p;
+		break;
+	case 2:
+		*r = p;
+		*g = v;
+		*b = t;
+		break;
+	case 3:
+		*r = p;
+		*g = q;
+		*b = v;
+		break;
+	case 4:
+		*r = t;
+		*g = p;
+		*b = v;
+		break;
+	default:            // case 5:
+		*r = v;
+		*g = p;
+		*b = q;
+		break;
+	}
+}
+
 void messageReceived(String topic, String payload, char * bytes, unsigned int length) {
 	Serial.print("\nincoming: ");
 	Serial.print(topic);
@@ -375,6 +439,38 @@ void messageReceived(String topic, String payload, char * bytes, unsigned int le
 			pwm.setPWM(pwmnum + 2, 0, pwms[pwmnum + 2]);
 
 		}
+	} else if (topic.startsWith(mqttdevice + "." + mqttlocation + "." + subscriber_hsl_id)) {
+		int ind = (mqttdevice + "." + mqttlocation + "." + subscriber_rgb_id).length();
+		int pwmindex = topic.substring(ind + 1, ind + 2).toInt();
+		uint8_t pwmnum = pwmindex * 3;
+		Serial.println("PWM hsl-index:" + String(pwmindex) + " channel:" + String(pwmnum));
+
+		int h_start = payload.indexOf("(");
+		int s_start = payload.indexOf(",", h_start);
+		int l_start = payload.indexOf(",", s_start + 1);
+
+		int h = payload.substring(h_start + 1, s_start).toInt();
+		int s = payload.substring(s_start + 1, l_start).toInt();
+		int l = payload.substring(l_start + 1, payload.length() - 1).toInt();
+
+		hsls[pwmnum] = h;
+		hsls[pwmnum + 1] = s;
+		hsls[pwmnum + 2] = l;
+
+		Serial.println("HSL:" + String(h) + "," + String(s) + "," + String(l));
+
+		getRGB(hsls, pwms, pwmnum);
+		//hsi2rgb(h,s,l,pwms,pwmnum);
+
+		uint16_t r = pgm_read_byte(delog+pwms[pwmnum]) * 16;
+		uint16_t g = pgm_read_byte(delog+pwms[pwmnum + 1]) * 16;
+		uint16_t b = pgm_read_byte(delog+pwms[pwmnum + 2]) * 16;
+
+		pwm.setPWM(pwmnum, 0, r);
+		pwm.setPWM(pwmnum + 1, 0, g);
+		pwm.setPWM(pwmnum + 2, 0, b);
+		//pgm_read_byte(delog + 3);
+
 	} else if (topic.equals(mqttdevice + "." + mqttlocation + "." + subscriber_setupmode_id)) {
 		setupAP();
 		ap_mode = true;
