@@ -55,11 +55,13 @@ const char* publisher_json_id = "json";
 const char* publisher_switch_id = "switch";
 const char* publisher_motion_id = "motion";
 
-//const char* subscriber_led_id = "led";
+const char* subscriber_led_id = "led";
 const char* subscriber_rgb_id = "rgb";
 const char* subscriber_hsl_id = "hsl";
 const char* subscriber_rgb_switch_id = "switch";
 const char* subscriber_setupmode_id = "setup";
+
+int numleds = 5;
 
 bool metric = true;
 unsigned int dopubsw = 0;
@@ -215,21 +217,21 @@ void connect() {
 		Serial.print(".");
 		delay(500);
 	}
-
-	Serial.print("\nconnecting...");
+	Serial.println();
+	Serial.print("connecting...");
 
 	while (!client.connect(mqttclientid.c_str(), mqttuser.c_str(), mqttpassword.c_str())) {
 		Serial.print(".");
 		delay(1000);
 	}
-
-	Serial.println("\nconnected!");
+	Serial.println();
+	Serial.println("connected!");
 	digitalWrite(LED_PIN, HIGH);
-//	client.subscribe(mqttdevice + "." + mqttlocation + "." + subscriber_led_id);
+	client.subscribe(mqttdevice + "." + mqttlocation + "." + subscriber_led_id);
 	client.subscribe(mqttdevice + "." + mqttlocation + "." + subscriber_rgb_id);
 	client.subscribe(mqttdevice + "." + mqttlocation + "." + subscriber_rgb_switch_id);
 	client.subscribe(mqttdevice + "." + mqttlocation + "." + subscriber_setupmode_id);
-	for (int i = 0; i < PWMCHAN; i++) {
+	for (int i = 0; i < (numleds); i++) {
 		Serial.println("Subscribe: " + mqttdevice + "." + mqttlocation + "." + subscriber_hsl_id + "." + i);
 		client.subscribe(mqttdevice + "." + mqttlocation + "." + subscriber_rgb_id + "." + i);
 		client.subscribe(mqttdevice + "." + mqttlocation + "." + subscriber_hsl_id + "." + i);
@@ -527,6 +529,10 @@ void readSettingsFromEeprom(void) {
 	mqttpassword = readEeprom(mqttpassword, MQTW_EPOS, 16);
 	Serial.println("MQTT SERVER: " + mqtthost + ":" + mqttport + "/" + mqttdevice + "." + mqttlocation);
 	Serial.println("MQTT Cliet ID: " + mqttclientid);
+
+	String snumleds = String(numleds);
+	snumleds = readEeprom(snumleds, NUMSTRIP, 8);
+	numleds = snumleds.toInt();
 }
 
 void createWebServer(int webtype) {
@@ -554,6 +560,7 @@ void createWebServer(int webtype) {
 					content += "<tr><td><label>MQTT dev: </label></td><td><input name='mqttdevice' value='"+mqttdevice+"' length=16></td><td><label>MQTT location: </label></td><td><input name='mqttlocation' value='"+mqttlocation+"' length=16></td></tr>";
 					content += "<tr><td><label>MQTT clientid: </label></td><td><input name='mqttclid' value='"+mqttclientid+"' length=32></td></tr>";
 					content += "<tr><td><label>MQTT user: </label></td><td><input name='mqttuser' value='"+mqttuser+"' length=16></td><td><label>MQTT password: </label></td><td><input name='mqttpwd' value='"+mqttpassword+"' length=16></td></tr>";
+					content += "<tr><td><label>#Led Strips: </label></td><td><input name='numleds' value='"+String(numleds)+"' length=8></td></tr>";
 					content += "</table><BR/><input type='submit' value='Save'></form>";
 					content += "</html>";
 					server.send(200, "text/html", content);
@@ -571,6 +578,7 @@ void createWebServer(int webtype) {
 			String qmqttc = server.arg("mqttclid");
 			String qmqttu = server.arg("mqttuser");
 			String qmqttw = server.arg("mqttpwd");
+			String qnl = server.arg("numleds");
 
 			if (qsid.length() > 0 && qpass.length() > 0) {
 				Serial.println("clearing eeprom");
@@ -590,6 +598,7 @@ void createWebServer(int webtype) {
 				saveEeprom(qmqttc,MQTC_EPOS);
 				saveEeprom(qmqttu,MQTU_EPOS);
 				saveEeprom(qmqttw,MQTW_EPOS);
+				saveEeprom(qnl,NUMSTRIP);
 				EEPROM.commit();
 				delay(500);
 				readSettingsFromEeprom();

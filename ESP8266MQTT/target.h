@@ -30,6 +30,7 @@
 #define MQTC_EPOS	208		//32
 #define MQTU_EPOS	240		//16
 #define MQTW_EPOS	256		//16
+#define NUMSTRIP	264		//8
 
 #define EEPROM_MAX  300
 
