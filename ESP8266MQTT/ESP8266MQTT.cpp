@@ -236,9 +236,9 @@ void connect() {
 	client.subscribe(mqttdevice + "." + mqttlocation + "." + subscriber_switch_id + ".1");
 	client.subscribe(mqttdevice + "." + mqttlocation + "." + subscriber_setupmode_id);
 	for (int i = 0; i < (numleds); i++) {
-		Serial.println("Subscribe: " + mqttdevice + "." + mqttlocation + "." + subscriber_hsl_id + "." + i);
+		Serial.println("Subscribe: " + mqttdevice + "." + mqttlocation + "." + subscriber_rgb_id + "." + i);
 		client.subscribe(mqttdevice + "." + mqttlocation + "." + subscriber_rgb_id + "." + i);
-		client.subscribe(mqttdevice + "." + mqttlocation + "." + subscriber_hsl_id + "." + i);
+		//client.subscribe(mqttdevice + "." + mqttlocation + "." + subscriber_hsl_id + "." + i);
 		client.subscribe(mqttdevice + "." + mqttlocation + "." + subscriber_rgb_id + "." + i + "." + subscriber_switch_id);
 	}
 
@@ -416,7 +416,7 @@ void messageReceived(String topic, String payload, char * bytes, unsigned int le
 				pwm.setPWM(pwmnum + 1, 0, pwms[pwmnum + 1]);
 				pwm.setPWM(pwmnum + 2, 0, pwms[pwmnum + 2]);
 			}
-		} else {
+		} else if (payload.startsWith("rgb")) {
 			Serial.print(" RGB ");
 			int r_start = payload.indexOf("(");
 			int g_start = payload.indexOf(",", r_start);
@@ -442,42 +442,41 @@ void messageReceived(String topic, String payload, char * bytes, unsigned int le
 			pwm.setPWM(pwmnum + 1, 0, pwms[pwmnum + 1]);
 			pwm.setPWM(pwmnum + 2, 0, pwms[pwmnum + 2]);
 
+		} else if (payload.startsWith("hsl")) {
+			//int ind = (mqttdevice + "." + mqttlocation + "." + subscriber_rgb_id).length();
+			//int pwmindex = topic.substring(ind + 1, ind + 2).toInt();
+			//uint8_t pwmnum = pwmindex * 3;
+			Serial.println("PWM hsl-index:" + String(pwmindex) + " channel:" + String(pwmnum));
+
+			int h_start = payload.indexOf("(");
+			int s_start = payload.indexOf(",", h_start);
+			int l_start = payload.indexOf(",", s_start + 1);
+
+			int h = payload.substring(h_start + 1, s_start).toInt();
+			int s = payload.substring(s_start + 1, l_start).toInt();
+			int l = payload.substring(l_start + 1, payload.length() - 1).toInt();
+
+			hsls[pwmnum] = h;
+			hsls[pwmnum + 1] = s;
+			hsls[pwmnum + 2] = l;
+
+			Serial.println("HSL:" + String(h) + "," + String(s) + "," + String(l));
+
+			getRGB(hsls, pwms, pwmnum);
+			//hsi2rgb(h,s,l,pwms,pwmnum);
+
+			uint16_t r = pgm_read_byte(delog+pwms[pwmnum]) * 16;
+			uint16_t g = pgm_read_byte(delog+pwms[pwmnum + 1]) * 16;
+			uint16_t b = pgm_read_byte(delog+pwms[pwmnum + 2]) * 16;
+
+			pwm.setPWM(pwmnum, 0, r);
+			pwm.setPWM(pwmnum + 1, 0, g);
+			pwm.setPWM(pwmnum + 2, 0, b);
+			//pgm_read_byte(delog + 3);
 		}
-	} else if (topic.startsWith(mqttdevice + "." + mqttlocation + "." + subscriber_hsl_id)) {
-		int ind = (mqttdevice + "." + mqttlocation + "." + subscriber_rgb_id).length();
-		int pwmindex = topic.substring(ind + 1, ind + 2).toInt();
-		uint8_t pwmnum = pwmindex * 3;
-		Serial.println("PWM hsl-index:" + String(pwmindex) + " channel:" + String(pwmnum));
-
-		int h_start = payload.indexOf("(");
-		int s_start = payload.indexOf(",", h_start);
-		int l_start = payload.indexOf(",", s_start + 1);
-
-		int h = payload.substring(h_start + 1, s_start).toInt();
-		int s = payload.substring(s_start + 1, l_start).toInt();
-		int l = payload.substring(l_start + 1, payload.length() - 1).toInt();
-
-		hsls[pwmnum] = h;
-		hsls[pwmnum + 1] = s;
-		hsls[pwmnum + 2] = l;
-
-		Serial.println("HSL:" + String(h) + "," + String(s) + "," + String(l));
-
-		getRGB(hsls, pwms, pwmnum);
-		//hsi2rgb(h,s,l,pwms,pwmnum);
-
-		uint16_t r = pgm_read_byte(delog+pwms[pwmnum]) * 16;
-		uint16_t g = pgm_read_byte(delog+pwms[pwmnum + 1]) * 16;
-		uint16_t b = pgm_read_byte(delog+pwms[pwmnum + 2]) * 16;
-
-		pwm.setPWM(pwmnum, 0, r);
-		pwm.setPWM(pwmnum + 1, 0, g);
-		pwm.setPWM(pwmnum + 2, 0, b);
-		//pgm_read_byte(delog + 3);
-
 	} else if (topic.startsWith(mqttdevice + "." + mqttlocation + "." + subscriber_switch_id)) {
 		int index = (mqttdevice + "." + mqttlocation + "." + subscriber_switch_id).length();
-		String snum = topic.substring(index+1);
+		String snum = topic.substring(index + 1);
 		int num = snum.toInt();
 		Serial.println("index = " + snum);
 		if (payload.equals("off")) {
