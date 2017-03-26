@@ -10,12 +10,13 @@
 
 //Harware layout
 #define LED_PIN 	D0
-#define MOTION_PIN 	D6     // what digital pin we're connected to
 #define SETUP_PIN	D1
 #define I2C_SDA_PIN	D2
 #define SW_PIN 		D3
 #define I2C_SCL_PIN	D4
-
+#define RELAY0		D5
+#define MOTION_PIN 	D6     // what digital pin we're connected to
+#define RELAY1		D7
 
 //EEPROM data locations
 #define SSID_EPOS	0		//32

@@ -7,10 +7,9 @@
 #include <MQTTClient.h>
 #include <ArduinoJson.h>
 #include <Wire.h>
-//#include "DHT.h"
+
 #include <BME280I2C.h>
 #include "BH1750.h"
-//#include "PCA9685.h"
 #include <Adafruit_PWMServoDriver.h>
 
 #include "target.h"
@@ -22,6 +21,7 @@
 
 #define PWMCHAN 16
 #define MAXPWM 4095
+#define MAXRELAY 2
 
 String version = "TRAP17_SENSOR";
 String ssid = "IOT";
@@ -48,17 +48,13 @@ static const PROGMEM uint8_t delog[] = { 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 
 
 const char* publisher_json_id = "json";
 
-//const char* publisher_temp_id = "temp";
-//const char* publisher_hum_id = "humidity";
-//const char* publisher_pres_id = "presure";
-//const char* publisher_lux_id = "lux";
 const char* publisher_switch_id = "switch";
 const char* publisher_motion_id = "motion";
 
 const char* subscriber_led_id = "led";
 const char* subscriber_rgb_id = "rgb";
 const char* subscriber_hsl_id = "hsl";
-const char* subscriber_rgb_switch_id = "switch";
+const char* subscriber_switch_id = "switch";
 const char* subscriber_setupmode_id = "setup";
 
 int numleds = 5;
@@ -69,6 +65,9 @@ unsigned int dopubmotion = 0;
 
 uint16_t pwms[PWMCHAN];
 uint16_t hsls[PWMCHAN];
+
+const int relay_pins[] = { RELAY0, RELAY1 };
+int relay_values[MAXRELAY];
 
 int lux, oldlux = 0;
 
@@ -115,6 +114,10 @@ void setup() {
 
 	pinMode(LED_PIN, OUTPUT);
 	pinMode(SETUP_PIN, INPUT_PULLUP);
+	pinMode(RELAY0, OUTPUT);
+	digitalWrite(RELAY0, HIGH);
+	pinMode(RELAY1, OUTPUT);
+	digitalWrite(RELAY1, HIGH);
 
 #ifdef SENSOR
 	pinMode(MOTION_PIN, INPUT);
@@ -227,15 +230,16 @@ void connect() {
 	Serial.println();
 	Serial.println("connected!");
 	digitalWrite(LED_PIN, HIGH);
-	client.subscribe(mqttdevice + "." + mqttlocation + "." + subscriber_led_id);
-	client.subscribe(mqttdevice + "." + mqttlocation + "." + subscriber_rgb_id);
-	client.subscribe(mqttdevice + "." + mqttlocation + "." + subscriber_rgb_switch_id);
+	//client.subscribe(mqttdevice + "." + mqttlocation + "." + subscriber_led_id);
+	//client.subscribe(mqttdevice + "." + mqttlocation + "." + subscriber_rgb_id);
+	client.subscribe(mqttdevice + "." + mqttlocation + "." + subscriber_switch_id + ".0");
+	client.subscribe(mqttdevice + "." + mqttlocation + "." + subscriber_switch_id + ".1");
 	client.subscribe(mqttdevice + "." + mqttlocation + "." + subscriber_setupmode_id);
 	for (int i = 0; i < (numleds); i++) {
 		Serial.println("Subscribe: " + mqttdevice + "." + mqttlocation + "." + subscriber_hsl_id + "." + i);
 		client.subscribe(mqttdevice + "." + mqttlocation + "." + subscriber_rgb_id + "." + i);
 		client.subscribe(mqttdevice + "." + mqttlocation + "." + subscriber_hsl_id + "." + i);
-		client.subscribe(mqttdevice + "." + mqttlocation + "." + subscriber_rgb_id + "." + i + "." + subscriber_rgb_switch_id);
+		client.subscribe(mqttdevice + "." + mqttlocation + "." + subscriber_rgb_id + "." + i + "." + subscriber_switch_id);
 	}
 
 }
@@ -338,8 +342,6 @@ void dumpPwms(uint16_t *values) {
 }
 
 void getRGB(uint16_t *hsl, uint16_t *pwm, uint16_t index) {
-	// I feel I should explain fixed point arithmetic in more detail, but this is
-	// is not the place.
 	uint16_t h = hsl[index];
 	uint16_t s = hsl[index + 1];
 	uint16_t v = hsl[index + 2];
@@ -402,7 +404,7 @@ void messageReceived(String topic, String payload, char * bytes, unsigned int le
 		Serial.print("PWM rgb-index:" + String(pwmindex) + " channel:" + String(pwmnum));
 
 		//Check for RGB switch
-		if (topic.endsWith(subscriber_rgb_switch_id)) {
+		if (topic.endsWith(subscriber_switch_id)) {
 			if (payload.equals("off")) {
 				Serial.println(" off");
 				pwm.setPWM(pwmnum, 0, 0);
@@ -473,6 +475,22 @@ void messageReceived(String topic, String payload, char * bytes, unsigned int le
 		pwm.setPWM(pwmnum + 2, 0, b);
 		//pgm_read_byte(delog + 3);
 
+	} else if (topic.startsWith(mqttdevice + "." + mqttlocation + "." + subscriber_switch_id)) {
+		int index = (mqttdevice + "." + mqttlocation + "." + subscriber_switch_id).length();
+		String snum = topic.substring(index+1);
+		int num = snum.toInt();
+		Serial.println("index = " + snum);
+		if (payload.equals("off")) {
+			Serial.println(" off " + num);
+			relay_values[num] = HIGH;
+			digitalWrite(relay_pins[num], relay_values[num]);
+			//digitalWrite(D5, HIGH);
+		} else {
+			Serial.println(" on " + num);
+			relay_values[num] = LOW;
+			digitalWrite(relay_pins[num], relay_values[num]);
+			//digitalWrite(D5, LOW);
+		}
 	} else if (topic.equals(mqttdevice + "." + mqttlocation + "." + subscriber_setupmode_id)) {
 		setupAP();
 		ap_mode = true;
