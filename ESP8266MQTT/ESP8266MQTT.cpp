@@ -11,6 +11,7 @@
 #include <BME280I2C.h>
 #include "BH1750.h"
 #include <Adafruit_PWMServoDriver.h>
+#include <I2cDiscreteIoExpander.h>
 
 #include "target.h"
 
@@ -21,7 +22,7 @@
 
 #define PWMCHAN 16
 #define MAXPWM 4095
-#define MAXRELAY 2
+#define MAXRELAY 16
 
 String version = "TRAP17_SENSOR";
 String ssid = "IOT";
@@ -66,8 +67,10 @@ unsigned int dopubmotion = 0;
 uint16_t pwms[PWMCHAN];
 uint16_t hsls[PWMCHAN];
 
-const int relay_pins[] = { RELAY0, RELAY1 };
-int relay_values[MAXRELAY];
+//const int relay_pins[] = { RELAY0, RELAY1 };
+//int relay_values[MAXRELAY];
+
+static uint16_t ioextender;
 
 int lux, oldlux = 0;
 
@@ -78,8 +81,9 @@ MQTTClient client;
 BH1750 lightMeter;
 BME280I2C bme;
 //I2C actuator
-//PCA9685 pwmController;                  // Library using default Wire and default linear phase balancing scheme
+//PCA9685 Controller
 Adafruit_PWMServoDriver pwm = Adafruit_PWMServoDriver();
+I2cDiscreteIoExpander device;
 
 //Config variables
 boolean ap_mode = false;
@@ -146,6 +150,11 @@ void setup() {
 
 		pwm.begin();
 		pwm.setPWMFreq(1600);  // This is the maximum PWM frequency
+
+		uint8_t status = device.digitalWrite(0x0000);
+		if (TWI_SUCCESS != status) {
+			Serial.println("Could not find PCF8575!");
+		}
 
 //		pwmController.resetDevices();       // Software resets all PCA9685 devices on Wire line
 //		pwmController.init(B000000);        // Address pins A5-A0 set to B000000
@@ -232,8 +241,9 @@ void connect() {
 	digitalWrite(LED_PIN, HIGH);
 	//client.subscribe(mqttdevice + "." + mqttlocation + "." + subscriber_led_id);
 	//client.subscribe(mqttdevice + "." + mqttlocation + "." + subscriber_rgb_id);
-	client.subscribe(mqttdevice + "." + mqttlocation + "." + subscriber_switch_id + ".0");
-	client.subscribe(mqttdevice + "." + mqttlocation + "." + subscriber_switch_id + ".1");
+	for (int i = 0; i < MAXRELAY; i++) {
+		client.subscribe(mqttdevice + "." + mqttlocation + "." + subscriber_switch_id + "." + i);
+	}
 	client.subscribe(mqttdevice + "." + mqttlocation + "." + subscriber_setupmode_id);
 	for (int i = 0; i < (numleds); i++) {
 		Serial.println("Subscribe: " + mqttdevice + "." + mqttlocation + "." + subscriber_rgb_id + "." + i);
@@ -255,6 +265,47 @@ void pubswitch(int pin, const char* topic, boolean low_is_on) {
 		client.publish(mqttdevice + "." + mqttlocation + "." + topic, "on");
 		//digitalWrite(LED_PIN, HIGH);
 	}
+}
+
+void testExpander() {
+	uint8_t status;
+	static uint16_t i;
+
+	// display device information on serial console
+	Serial.print("Loop ");
+	Serial.print(++i, DEC);
+	Serial.print(", address ");
+	Serial.print(device.getAddress(), DEC);
+	Serial.print(", ");
+
+	// attempt to write 16-bit word
+	status = device.digitalWrite(i);
+	if (TWI_SUCCESS == status) {
+		// display success information on serial console
+		Serial.print("write 0x");
+		Serial.print(i, HEX);
+		Serial.print(", ");
+	} else {
+		// display error information on serial console
+		Serial.print("write error ");
+		Serial.print(status, DEC);
+		Serial.print(", ");
+	}
+
+	// attempt to read 16-bit word
+	status = device.digitalRead();
+	if (TWI_SUCCESS == status) {
+		// display success information on serial console
+		Serial.print("read 0x");
+		Serial.print(device.getPorts(), HEX);
+		Serial.println(".");
+	} else {
+		// display error information on serial console
+		Serial.print("read error ");
+		Serial.print(status, DEC);
+		Serial.println(".");
+	}
+
 }
 
 void loop() {
@@ -295,6 +346,8 @@ void loop() {
 				lux = lightMeter.readLightLevel();
 
 				sendData(temp, hum, pres, lux);
+
+//				testExpander();
 			}
 		}
 #endif
@@ -416,6 +469,7 @@ void messageReceived(String topic, String payload, char * bytes, unsigned int le
 				pwm.setPWM(pwmnum + 1, 0, pwms[pwmnum + 1]);
 				pwm.setPWM(pwmnum + 2, 0, pwms[pwmnum + 2]);
 			}
+			//check for rgb values
 		} else if (payload.startsWith("rgb")) {
 			Serial.print(" RGB ");
 			int r_start = payload.indexOf("(");
@@ -441,11 +495,8 @@ void messageReceived(String topic, String payload, char * bytes, unsigned int le
 			pwm.setPWM(pwmnum, 0, pwms[pwmnum]);
 			pwm.setPWM(pwmnum + 1, 0, pwms[pwmnum + 1]);
 			pwm.setPWM(pwmnum + 2, 0, pwms[pwmnum + 2]);
-
+			//check for hsl values
 		} else if (payload.startsWith("hsl")) {
-			//int ind = (mqttdevice + "." + mqttlocation + "." + subscriber_rgb_id).length();
-			//int pwmindex = topic.substring(ind + 1, ind + 2).toInt();
-			//uint8_t pwmnum = pwmindex * 3;
 			Serial.println("PWM hsl-index:" + String(pwmindex) + " channel:" + String(pwmnum));
 
 			int h_start = payload.indexOf("(");
@@ -478,18 +529,22 @@ void messageReceived(String topic, String payload, char * bytes, unsigned int le
 		int index = (mqttdevice + "." + mqttlocation + "." + subscriber_switch_id).length();
 		String snum = topic.substring(index + 1);
 		int num = snum.toInt();
-		Serial.println("index = " + snum);
+		//Serial.println("index = " + snum);
 		if (payload.equals("off")) {
-			Serial.println(" off " + num);
-			relay_values[num] = HIGH;
-			digitalWrite(relay_pins[num], relay_values[num]);
-			//digitalWrite(D5, HIGH);
+			//Serial.println(" off " + num);
+			ioextender &= ~(1 << num);
 		} else {
-			Serial.println(" on " + num);
-			relay_values[num] = LOW;
-			digitalWrite(relay_pins[num], relay_values[num]);
-			//digitalWrite(D5, LOW);
+			//Serial.println(" on " + num);
+			ioextender |= 1 << num;
 		}
+		uint8_t status;
+		// attempt to write 16-bit word
+		status = device.digitalWrite(ioextender);
+		if (status != TWI_SUCCESS) {
+			Serial.print("write error ");
+			Serial.println(status, DEC);
+		}
+
 	} else if (topic.equals(mqttdevice + "." + mqttlocation + "." + subscriber_setupmode_id)) {
 		setupAP();
 		ap_mode = true;
