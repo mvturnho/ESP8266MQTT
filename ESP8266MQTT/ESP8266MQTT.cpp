@@ -59,6 +59,9 @@ const char* subscriber_switch_id = "switch";
 const char* subscriber_setupmode_id = "setup";
 
 int numleds = 5;
+int numoutputs = 0;
+
+bool haspcf8575 = false;
 
 bool metric = true;
 unsigned int dopubsw = 0;
@@ -118,10 +121,6 @@ void setup() {
 
 	pinMode(LED_PIN, OUTPUT);
 	pinMode(SETUP_PIN, INPUT_PULLUP);
-	pinMode(RELAY0, OUTPUT);
-	digitalWrite(RELAY0, HIGH);
-	pinMode(RELAY1, OUTPUT);
-	digitalWrite(RELAY1, HIGH);
 
 #ifdef SENSOR
 	pinMode(MOTION_PIN, INPUT);
@@ -154,15 +153,9 @@ void setup() {
 		uint8_t status = device.digitalWrite(0x0000);
 		if (TWI_SUCCESS != status) {
 			Serial.println("Could not find PCF8575!");
+		} else {
+			haspcf8575 = true;
 		}
-
-//		pwmController.resetDevices();       // Software resets all PCA9685 devices on Wire line
-//		pwmController.init(B000000);        // Address pins A5-A0 set to B000000
-//		pwmController.setPWMFrequency(500); // Default is 200Hz, supports 24Hz to 1526Hz
-//		pwmController.setChannelOff(0);
-//		pwmController.setChannelPWM(0, 4096);
-//
-//		//Serial.println(pwmController.getChannelPWM(0)); // Should output 2048, which is 128 << 4
 //
 		for (int i = 0; i < PWMCHAN; i++) {
 			pwms[i] = 0;
@@ -241,8 +234,11 @@ void connect() {
 	digitalWrite(LED_PIN, HIGH);
 	//client.subscribe(mqttdevice + "." + mqttlocation + "." + subscriber_led_id);
 	//client.subscribe(mqttdevice + "." + mqttlocation + "." + subscriber_rgb_id);
-	for (int i = 0; i < MAXRELAY; i++) {
-		client.subscribe(mqttdevice + "." + mqttlocation + "." + subscriber_switch_id + "." + i);
+	if (haspcf8575 == true) {
+		for (int i = 0; i < numoutputs; i++) {
+			Serial.println("Subscribe: " + mqttdevice + "." + mqttlocation + "." + subscriber_switch_id + "." + i);
+			client.subscribe(mqttdevice + "." + mqttlocation + "." + subscriber_switch_id + "." + i);
+		}
 	}
 	client.subscribe(mqttdevice + "." + mqttlocation + "." + subscriber_setupmode_id);
 	for (int i = 0; i < (numleds); i++) {
@@ -265,47 +261,6 @@ void pubswitch(int pin, const char* topic, boolean low_is_on) {
 		client.publish(mqttdevice + "." + mqttlocation + "." + topic, "on");
 		//digitalWrite(LED_PIN, HIGH);
 	}
-}
-
-void testExpander() {
-	uint8_t status;
-	static uint16_t i;
-
-	// display device information on serial console
-	Serial.print("Loop ");
-	Serial.print(++i, DEC);
-	Serial.print(", address ");
-	Serial.print(device.getAddress(), DEC);
-	Serial.print(", ");
-
-	// attempt to write 16-bit word
-	status = device.digitalWrite(i);
-	if (TWI_SUCCESS == status) {
-		// display success information on serial console
-		Serial.print("write 0x");
-		Serial.print(i, HEX);
-		Serial.print(", ");
-	} else {
-		// display error information on serial console
-		Serial.print("write error ");
-		Serial.print(status, DEC);
-		Serial.print(", ");
-	}
-
-	// attempt to read 16-bit word
-	status = device.digitalRead();
-	if (TWI_SUCCESS == status) {
-		// display success information on serial console
-		Serial.print("read 0x");
-		Serial.print(device.getPorts(), HEX);
-		Serial.println(".");
-	} else {
-		// display error information on serial console
-		Serial.print("read error ");
-		Serial.print(status, DEC);
-		Serial.println(".");
-	}
-
 }
 
 void loop() {
@@ -605,6 +560,11 @@ void readSettingsFromEeprom(void) {
 	String snumleds = String(numleds);
 	snumleds = readEeprom(snumleds, NUMSTRIP, 8);
 	numleds = snumleds.toInt();
+
+	String snumout = String(numoutputs);
+	snumout = readEeprom(snumout, NUMOUTP, 8);
+	numoutputs = snumout.toInt();
+
 }
 
 void createWebServer(int webtype) {
@@ -633,6 +593,7 @@ void createWebServer(int webtype) {
 					content += "<tr><td><label>MQTT clientid: </label></td><td><input name='mqttclid' value='"+mqttclientid+"' length=32></td></tr>";
 					content += "<tr><td><label>MQTT user: </label></td><td><input name='mqttuser' value='"+mqttuser+"' length=16></td><td><label>MQTT password: </label></td><td><input name='mqttpwd' value='"+mqttpassword+"' length=16></td></tr>";
 					content += "<tr><td><label>#Led Strips: </label></td><td><input name='numleds' value='"+String(numleds)+"' length=8></td></tr>";
+					content += "<tr><td><label>#PCF8575: </label></td><td><input name='numoutputs' value='"+String(numoutputs)+"' length=8></td></tr>";
 					content += "</table><BR/><input type='submit' value='Save'></form>";
 					content += "</html>";
 					server.send(200, "text/html", content);
@@ -651,6 +612,7 @@ void createWebServer(int webtype) {
 			String qmqttu = server.arg("mqttuser");
 			String qmqttw = server.arg("mqttpwd");
 			String qnl = server.arg("numleds");
+			String qnout = server.arg("numoutputs");
 
 			if (qsid.length() > 0 && qpass.length() > 0) {
 				Serial.println("clearing eeprom");
@@ -671,6 +633,8 @@ void createWebServer(int webtype) {
 				saveEeprom(qmqttu,MQTU_EPOS);
 				saveEeprom(qmqttw,MQTW_EPOS);
 				saveEeprom(qnl,NUMSTRIP);
+				saveEeprom(qnout,NUMOUTP);
+
 				EEPROM.commit();
 				delay(500);
 				readSettingsFromEeprom();

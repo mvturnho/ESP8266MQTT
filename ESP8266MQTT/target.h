@@ -14,9 +14,9 @@
 #define I2C_SDA_PIN	D2
 #define SW_PIN 		D3
 #define I2C_SCL_PIN	D4
-#define RELAY0		D5
+//#define IOEXT_INT	D5
 #define MOTION_PIN 	D6     // what digital pin we're connected to
-#define RELAY1		D7
+//#define RELAY1		D7
 
 //EEPROM data locations
 #define SSID_EPOS	0		//32
@@ -32,6 +32,7 @@
 #define MQTU_EPOS	240		//16
 #define MQTW_EPOS	256		//16
 #define NUMSTRIP	264		//8
+#define NUMOUTP		272		//8
 
 #define EEPROM_MAX  300
 
