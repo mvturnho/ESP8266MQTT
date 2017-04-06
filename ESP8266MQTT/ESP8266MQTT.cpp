@@ -10,10 +10,11 @@
 
 #include <BME280I2C.h>
 #include "BH1750.h"
-#include <Adafruit_PWMServoDriver.h>
+//#include <Adafruit_PWMServoDriver.h>
 #include <I2cDiscreteIoExpander.h>
 
 #include "target.h"
+#include "PWMContr.h"
 
 #define SENSOR
 #define DEBUG_ESP_HTTP_UPDATE 1
@@ -38,14 +39,14 @@ String mqttclientid = "";
 String mqttuser = "";
 String mqttpassword = "";
 
-static const PROGMEM uint8_t delog[] = { 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
-		1, 1, 1, 1, 1, 1, 1, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 4, 4, 4, 4, 4, 4, 4, 4, 4, 5, 5, 5, 5,
-		5, 5, 5, 5, 6, 6, 6, 6, 6, 6, 6, 7, 7, 7, 7, 7, 8, 8, 8, 8, 8, 9, 9, 9, 9, 9, 10, 10, 10, 10, 11, 11, 11, 11, 12, 12, 12, 12, 13, 13, 13, 14,
-		14, 14, 15, 15, 15, 16, 16, 16, 17, 17, 18, 18, 18, 19, 19, 20, 20, 21, 21, 22, 22, 23, 23, 24, 24, 25, 25, 26, 26, 27, 28, 28, 29, 30, 30,
-		31, 32, 32, 33, 34, 35, 35, 36, 37, 38, 39, 40, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 51, 52, 53, 54, 55, 56, 58, 59, 60, 62, 63, 64, 66,
-		67, 69, 70, 72, 73, 75, 77, 78, 80, 82, 84, 86, 88, 90, 91, 94, 96, 98, 100, 102, 104, 107, 109, 111, 114, 116, 119, 122, 124, 127, 130, 133,
-		136, 139, 142, 145, 148, 151, 155, 158, 161, 165, 169, 172, 176, 180, 184, 188, 192, 196, 201, 205, 210, 214, 219, 224, 229, 234, 239, 244,
-		250, };
+//static const PROGMEM uint8_t delog[] = { 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
+//		1, 1, 1, 1, 1, 1, 1, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 4, 4, 4, 4, 4, 4, 4, 4, 4, 5, 5, 5, 5,
+//		5, 5, 5, 5, 6, 6, 6, 6, 6, 6, 6, 7, 7, 7, 7, 7, 8, 8, 8, 8, 8, 9, 9, 9, 9, 9, 10, 10, 10, 10, 11, 11, 11, 11, 12, 12, 12, 12, 13, 13, 13, 14,
+//		14, 14, 15, 15, 15, 16, 16, 16, 17, 17, 18, 18, 18, 19, 19, 20, 20, 21, 21, 22, 22, 23, 23, 24, 24, 25, 25, 26, 26, 27, 28, 28, 29, 30, 30,
+//		31, 32, 32, 33, 34, 35, 35, 36, 37, 38, 39, 40, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 51, 52, 53, 54, 55, 56, 58, 59, 60, 62, 63, 64, 66,
+//		67, 69, 70, 72, 73, 75, 77, 78, 80, 82, 84, 86, 88, 90, 91, 94, 96, 98, 100, 102, 104, 107, 109, 111, 114, 116, 119, 122, 124, 127, 130, 133,
+//		136, 139, 142, 145, 148, 151, 155, 158, 161, 165, 169, 172, 176, 180, 184, 188, 192, 196, 201, 205, 210, 214, 219, 224, 229, 234, 239, 244,
+//		250, };
 
 const char* publisher_json_id = "json";
 
@@ -85,8 +86,9 @@ BH1750 lightMeter;
 BME280I2C bme;
 //I2C actuator
 //PCA9685 Controller
-Adafruit_PWMServoDriver pwm = Adafruit_PWMServoDriver();
+//Adafruit_PWMServoDriver pwm = Adafruit_PWMServoDriver();
 I2cDiscreteIoExpander device;
+PWMContr pwmcontr;
 
 //Config variables
 boolean ap_mode = false;
@@ -147,8 +149,8 @@ void setup() {
 			Serial.println("Could not find BME280 sensor!");
 		}
 
-		pwm.begin();
-		pwm.setPWMFreq(1600);  // This is the maximum PWM frequency
+//		pwm.begin();
+//		pwm.setPWMFreq(1600);  // This is the maximum PWM frequency
 
 		uint8_t status = device.digitalWrite(0x0000);
 		if (TWI_SUCCESS != status) {
@@ -157,11 +159,12 @@ void setup() {
 			haspcf8575 = true;
 		}
 //
-		for (int i = 0; i < PWMCHAN; i++) {
-			pwms[i] = 0;
+		pwmcontr.initPWM(numleds);
+//		for (int i = 0; i < PWMCHAN; i++) {
+//			pwms[i] = 0;
 //			pwmController.setChannelPWM(i, pwms[i]);
-			pwm.setPWM(i, 0, 0);
-		}
+//			pwm.setPWM(i, 0, 0);
+//		}
 //
 //		pwmController.setChannelsPWM(0, PWMCHAN - 1, pwms);
 #endif
@@ -239,6 +242,7 @@ void connect() {
 			Serial.println("Subscribe: " + mqttdevice + "." + mqttlocation + "." + subscriber_switch_id + "." + i);
 			client.subscribe(mqttdevice + "." + mqttlocation + "." + subscriber_switch_id + "." + i);
 		}
+		client.subscribe(mqttdevice + "." + mqttlocation + "." + subscriber_switch_id + ".*");
 	}
 	client.subscribe(mqttdevice + "." + mqttlocation + "." + subscriber_setupmode_id);
 	for (int i = 0; i < (numleds); i++) {
@@ -247,6 +251,7 @@ void connect() {
 		//client.subscribe(mqttdevice + "." + mqttlocation + "." + subscriber_hsl_id + "." + i);
 		client.subscribe(mqttdevice + "." + mqttlocation + "." + subscriber_rgb_id + "." + i + "." + subscriber_switch_id);
 	}
+	client.subscribe(mqttdevice + "." + mqttlocation + "." + subscriber_rgb_id + ".*." + subscriber_switch_id);
 
 }
 
@@ -398,6 +403,124 @@ void getRGB(uint16_t *hsl, uint16_t *pwm, uint16_t index) {
 	}
 }
 
+//void switchLedStrip(String pwmstr, String payload) {
+//	if (pwmstr.equals("*")) {
+//		if (payload.equals("off"))
+//			for (int i = 0; i < numleds * 3; i++) {
+//				pwm.setPWM(i, 0, 0);
+//			}
+//		else
+//			for (int i = 0; i < numleds * 3; i++) {
+//				pwm.setPWM(i, 0, pwms[i]);
+//			}
+//	} else {
+//		int pwmindex = pwmstr.toInt();
+//		uint8_t pwmnum = pwmindex * 3;
+//		if (payload.equals("off")) {
+//			Serial.println(" off");
+//			pwm.setPWM(pwmnum, 0, 0);
+//			pwm.setPWM(pwmnum + 1, 0, 0);
+//			pwm.setPWM(pwmnum + 2, 0, 0);
+//		} else {
+//			Serial.println(" on");
+//			pwm.setPWM(pwmnum, 0, pwms[pwmnum]);
+//			pwm.setPWM(pwmnum + 1, 0, pwms[pwmnum + 1]);
+//			pwm.setPWM(pwmnum + 2, 0, pwms[pwmnum + 2]);
+//		}
+//	}
+//}
+//
+//void pwmLedStrip(String pwmstr, String payload) {
+//	int pwmindex = pwmstr.toInt();
+//	uint8_t pwmnum = pwmindex * 3;
+//
+//	int r_start = payload.indexOf("(");
+//	int g_start = payload.indexOf(",", r_start);
+//	int b_start = payload.indexOf(",", g_start + 1);
+//
+//	int r = payload.substring(r_start + 1, g_start).toInt();
+//	int g = payload.substring(g_start + 1, b_start).toInt();
+//	int b = payload.substring(b_start + 1, payload.length() - 1).toInt();
+//
+//	Serial.println("R:" + String(r) + " G:" + String(g) + " B:" + String(b));
+//	if (r > MAXPWM)
+//		r = MAXPWM;
+//	if (g > MAXPWM)
+//		g = MAXPWM;
+//	if (b > MAXPWM)
+//		b = MAXPWM;
+//
+//	pwms[pwmnum] = r;
+//	pwms[pwmnum + 1] = g;
+//	pwms[pwmnum + 2] = b;
+//
+//	pwm.setPWM(pwmnum, 0, pwms[pwmnum]);
+//	pwm.setPWM(pwmnum + 1, 0, pwms[pwmnum + 1]);
+//	pwm.setPWM(pwmnum + 2, 0, pwms[pwmnum + 2]);
+//
+//}
+//
+//void rgbLedStrip(String pwmstr, String payload) {
+//	int pwmindex = pwmstr.toInt();
+//	uint8_t pwmnum = pwmindex * 3;
+//
+//	int r_start = payload.indexOf("(");
+//	int g_start = payload.indexOf(",", r_start);
+//	int b_start = payload.indexOf(",", g_start + 1);
+//
+//	int r = payload.substring(r_start + 1, g_start).toInt() * 16;
+//	int g = payload.substring(g_start + 1, b_start).toInt() * 16;
+//	int b = payload.substring(b_start + 1, payload.length() - 1).toInt() * 16;
+//
+//	Serial.println("R:" + String(r) + " G:" + String(g) + " B:" + String(b));
+//	if (r > MAXPWM)
+//		r = MAXPWM;
+//	if (g > MAXPWM)
+//		g = MAXPWM;
+//	if (b > MAXPWM)
+//		b = MAXPWM;
+//
+//	pwms[pwmnum] = r;
+//	pwms[pwmnum + 1] = g;
+//	pwms[pwmnum + 2] = b;
+//
+//	pwm.setPWM(pwmnum, 0, pwms[pwmnum]);
+//	pwm.setPWM(pwmnum + 1, 0, pwms[pwmnum + 1]);
+//	pwm.setPWM(pwmnum + 2, 0, pwms[pwmnum + 2]);
+//
+//}
+//
+//void hslLedStrip(String pwmstr, String payload) {
+//	int pwmindex = pwmstr.toInt();
+//	uint8_t pwmnum = pwmindex * 3;
+//
+//	int h_start = payload.indexOf("(");
+//	int s_start = payload.indexOf(",", h_start);
+//	int l_start = payload.indexOf(",", s_start + 1);
+//
+//	int h = payload.substring(h_start + 1, s_start).toInt();
+//	int s = payload.substring(s_start + 1, l_start).toInt();
+//	int l = payload.substring(l_start + 1, payload.length() - 1).toInt();
+//
+//	hsls[pwmnum] = h;
+//	hsls[pwmnum + 1] = s;
+//	hsls[pwmnum + 2] = l;
+//
+//	Serial.println("HSL:" + String(h) + "," + String(s) + "," + String(l));
+//
+//	getRGB(hsls, pwms, pwmnum);
+//	//hsi2rgb(h,s,l,pwms,pwmnum);
+//
+//	pwms[pwmnum] = pgm_read_byte(delog+pwms[pwmnum]) * 16;
+//	pwms[pwmnum + 1] = pgm_read_byte(delog+pwms[pwmnum + 1]) * 16;
+//	pwms[pwmnum + 2] = pgm_read_byte(delog+pwms[pwmnum + 2]) * 16;
+//
+//	pwm.setPWM(pwmnum, 0, pwms[pwmnum]);
+//	pwm.setPWM(pwmnum + 1, 0, pwms[pwmnum + 1]);
+//	pwm.setPWM(pwmnum + 2, 0, pwms[pwmnum + 2]);
+//
+//}
+
 void messageReceived(String topic, String payload, char * bytes, unsigned int length) {
 	Serial.print("\nincoming: ");
 	Serial.print(topic);
@@ -407,97 +530,60 @@ void messageReceived(String topic, String payload, char * bytes, unsigned int le
 
 	if (topic.startsWith(mqttdevice + "." + mqttlocation + "." + subscriber_rgb_id)) {
 		int ind = (mqttdevice + "." + mqttlocation + "." + subscriber_rgb_id).length();
-		int pwmindex = topic.substring(ind + 1, ind + 2).toInt();
+		String indstr = topic.substring(ind + 1, ind + 2);
+		int pwmindex = indstr.toInt();
 		uint8_t pwmnum = pwmindex * 3;
 		Serial.print("PWM rgb-index:" + String(pwmindex) + " channel:" + String(pwmnum));
 
 		//Check for RGB switch
 		if (topic.endsWith(subscriber_switch_id)) {
-			if (payload.equals("off")) {
-				Serial.println(" off");
-				pwm.setPWM(pwmnum, 0, 0);
-				pwm.setPWM(pwmnum + 1, 0, 0);
-				pwm.setPWM(pwmnum + 2, 0, 0);
-			} else {
-				Serial.println(" on");
-				pwm.setPWM(pwmnum, 0, pwms[pwmnum]);
-				pwm.setPWM(pwmnum + 1, 0, pwms[pwmnum + 1]);
-				pwm.setPWM(pwmnum + 2, 0, pwms[pwmnum + 2]);
-			}
+//			switchLedStrip(indstr, payload);
+			pwmcontr.switchLedStrip(indstr,payload);
 			//check for rgb values
+		} else if (payload.startsWith("pwm")) {
+			Serial.print(" PWM ");
+//			pwmLedStrip(indstr, payload);
+			pwmcontr.pwmLedStrip(indstr,payload);
+			//check for hsl values
 		} else if (payload.startsWith("rgb")) {
 			Serial.print(" RGB ");
-			int r_start = payload.indexOf("(");
-			int g_start = payload.indexOf(",", r_start);
-			int b_start = payload.indexOf(",", g_start + 1);
-
-			int r = payload.substring(r_start + 1, g_start).toInt();
-			int g = payload.substring(g_start + 1, b_start).toInt();
-			int b = payload.substring(b_start + 1, payload.length() - 1).toInt();
-
-			Serial.println("R:" + String(r) + " G:" + String(g) + " B:" + String(b));
-			if (r > MAXPWM)
-				r = MAXPWM;
-			if (g > MAXPWM)
-				g = MAXPWM;
-			if (b > MAXPWM)
-				b = MAXPWM;
-
-			pwms[pwmnum] = r;
-			pwms[pwmnum + 1] = g;
-			pwms[pwmnum + 2] = b;
-
-			pwm.setPWM(pwmnum, 0, pwms[pwmnum]);
-			pwm.setPWM(pwmnum + 1, 0, pwms[pwmnum + 1]);
-			pwm.setPWM(pwmnum + 2, 0, pwms[pwmnum + 2]);
+			pwmcontr.rgbLedStrip(indstr,payload);
+//			rgbLedStrip(indstr, payload);
 			//check for hsl values
 		} else if (payload.startsWith("hsl")) {
 			Serial.println("PWM hsl-index:" + String(pwmindex) + " channel:" + String(pwmnum));
-
-			int h_start = payload.indexOf("(");
-			int s_start = payload.indexOf(",", h_start);
-			int l_start = payload.indexOf(",", s_start + 1);
-
-			int h = payload.substring(h_start + 1, s_start).toInt();
-			int s = payload.substring(s_start + 1, l_start).toInt();
-			int l = payload.substring(l_start + 1, payload.length() - 1).toInt();
-
-			hsls[pwmnum] = h;
-			hsls[pwmnum + 1] = s;
-			hsls[pwmnum + 2] = l;
-
-			Serial.println("HSL:" + String(h) + "," + String(s) + "," + String(l));
-
-			getRGB(hsls, pwms, pwmnum);
-			//hsi2rgb(h,s,l,pwms,pwmnum);
-
-			uint16_t r = pgm_read_byte(delog+pwms[pwmnum]) * 16;
-			uint16_t g = pgm_read_byte(delog+pwms[pwmnum + 1]) * 16;
-			uint16_t b = pgm_read_byte(delog+pwms[pwmnum + 2]) * 16;
-
-			pwm.setPWM(pwmnum, 0, r);
-			pwm.setPWM(pwmnum + 1, 0, g);
-			pwm.setPWM(pwmnum + 2, 0, b);
-			//pgm_read_byte(delog + 3);
+			pwmcontr.hslLedStrip(indstr,payload);
+//			hslLedStrip(indstr,payload);
 		}
 	} else if (topic.startsWith(mqttdevice + "." + mqttlocation + "." + subscriber_switch_id)) {
 		int index = (mqttdevice + "." + mqttlocation + "." + subscriber_switch_id).length();
 		String snum = topic.substring(index + 1);
-		int num = snum.toInt();
-		//Serial.println("index = " + snum);
-		if (payload.equals("off")) {
-			//Serial.println(" off " + num);
-			ioextender &= ~(1 << num);
+		if (snum.equals("*")) {
+			if (payload.equals("off")) {
+				//Serial.println(" off " + num);
+				ioextender = 0;
+			} else {
+				//Serial.println(" on " + num);
+				ioextender = 0b1111111111111111;
+			}
 		} else {
-			//Serial.println(" on " + num);
-			ioextender |= 1 << num;
-		}
-		uint8_t status;
-		// attempt to write 16-bit word
-		status = device.digitalWrite(ioextender);
-		if (status != TWI_SUCCESS) {
-			Serial.print("write error ");
-			Serial.println(status, DEC);
+			int num = snum.toInt();
+
+			//Serial.println("index = " + snum);
+			if (payload.equals("off")) {
+				//Serial.println(" off " + num);
+				ioextender &= ~(1 << num);
+			} else {
+				//Serial.println(" on " + num);
+				ioextender |= 1 << num;
+			}
+			uint8_t status;
+			// attempt to write 16-bit word
+			status = device.digitalWrite(ioextender);
+			if (status != TWI_SUCCESS) {
+				Serial.print("write error ");
+				Serial.println(status, DEC);
+			}
 		}
 
 	} else if (topic.equals(mqttdevice + "." + mqttlocation + "." + subscriber_setupmode_id)) {
