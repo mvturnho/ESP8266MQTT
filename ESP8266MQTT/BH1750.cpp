@@ -13,8 +13,6 @@ Written by Christopher Laws, March, 2013.
 
 #include "BH1750.h"
 
-BH1750::BH1750() {
-}
 
 void BH1750::begin(uint8_t mode) {
 

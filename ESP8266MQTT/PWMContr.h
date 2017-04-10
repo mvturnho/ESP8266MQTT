@@ -30,6 +30,9 @@ public:
 	void pwmLedStrip(String pwmstr, String payload);
 	void rgbLedStrip(String pwmstr, String payload);
 	void hslLedStrip(String pwmstr, String payload);
+
+	void dumpPwms(uint16_t *values);
+
 private:
 	Adafruit_PWMServoDriver pwm = Adafruit_PWMServoDriver();
 	uint16_t pwms[PWMCHAN];
@@ -37,6 +40,7 @@ private:
 	int numleds = 5;
 
 	void getRGB(uint16_t *hsl, uint16_t *pwm, uint16_t index);
+	void setPWM(int pwmnum,int r,int g,int b);
 
 };
 

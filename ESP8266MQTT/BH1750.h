@@ -65,7 +65,6 @@ Written by Christopher Laws, March, 2013.
 
 class BH1750 {
  public:
-  BH1750();
   void begin(uint8_t mode = BH1750_CONTINUOUS_HIGH_RES_MODE);
   void configure(uint8_t mode);
   uint16_t readLightLevel(void);

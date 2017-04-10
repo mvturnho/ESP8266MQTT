@@ -7,13 +7,12 @@
 #include <Arduino.h>
 #include "PWMContr.h"
 
-
 PWMContr::PWMContr() {
-	pwm.begin();
-	pwm.setPWMFreq(1600);  // This is the maximum PWM frequency
 }
 
 void PWMContr::initPWM(int activeleds) {
+	pwm.begin();
+	pwm.setPWMFreq(1600);  // This is the maximum PWM frequency
 	numleds = activeleds;
 	for (int i = 0; i < PWMCHAN; i++) {
 		pwms[i] = 0;
@@ -50,8 +49,6 @@ void PWMContr::switchLedStrip(String pwmstr, String payload) {
 }
 
 void PWMContr::pwmLedStrip(String pwmstr, String payload) {
-	int pwmindex = pwmstr.toInt();
-	uint8_t pwmnum = pwmindex * 3;
 
 	int r_start = payload.indexOf("(");
 	int g_start = payload.indexOf(",", r_start);
@@ -61,21 +58,15 @@ void PWMContr::pwmLedStrip(String pwmstr, String payload) {
 	int g = payload.substring(g_start + 1, b_start).toInt();
 	int b = payload.substring(b_start + 1, payload.length() - 1).toInt();
 
-	Serial.println("R:" + String(r) + " G:" + String(g) + " B:" + String(b));
-	if (r > MAXPWM)
-		r = MAXPWM;
-	if (g > MAXPWM)
-		g = MAXPWM;
-	if (b > MAXPWM)
-		b = MAXPWM;
-
-	pwms[pwmnum] = r;
-	pwms[pwmnum + 1] = g;
-	pwms[pwmnum + 2] = b;
-
-	pwm.setPWM(pwmnum, 0, pwms[pwmnum]);
-	pwm.setPWM(pwmnum + 1, 0, pwms[pwmnum + 1]);
-	pwm.setPWM(pwmnum + 2, 0, pwms[pwmnum + 2]);
+	if (pwmstr.equals("*")) {
+		for (int i = 0; i < numleds; i += 3) {
+			setPWM(i, r, g, b);
+		}
+	} else {
+		int pwmindex = pwmstr.toInt();
+		uint8_t pwmnum = pwmindex * 3;
+		setPWM(pwmnum, r, g, b);
+	}
 
 }
 
@@ -140,6 +131,24 @@ void PWMContr::hslLedStrip(String pwmstr, String payload) {
 
 }
 
+void PWMContr::setPWM(int pwmnum, int r, int g, int b) {
+	Serial.println("R:" + String(r) + " G:" + String(g) + " B:" + String(b));
+	if (r > MAXPWM)
+		r = MAXPWM;
+	if (g > MAXPWM)
+		g = MAXPWM;
+	if (b > MAXPWM)
+		b = MAXPWM;
+
+	pwms[pwmnum] = r;
+	pwms[pwmnum + 1] = g;
+	pwms[pwmnum + 2] = b;
+
+	pwm.setPWM(pwmnum, 0, pwms[pwmnum]);
+	pwm.setPWM(pwmnum + 1, 0, pwms[pwmnum + 1]);
+	pwm.setPWM(pwmnum + 2, 0, pwms[pwmnum + 2]);
+}
+
 void PWMContr::getRGB(uint16_t *hsl, uint16_t *pwm, uint16_t index) {
 	uint16_t h = hsl[index];
 	uint16_t s = hsl[index + 1];
@@ -186,5 +195,11 @@ void PWMContr::getRGB(uint16_t *hsl, uint16_t *pwm, uint16_t index) {
 		*g = p;
 		*b = q;
 		break;
+	}
+}
+
+void PWMContr::dumpPwms(uint16_t *values) {
+	for (int i = 0; i < PWMCHAN; i++) {
+		Serial.println("channel: " + String(i) + " - " + values[i]);
 	}
 }
