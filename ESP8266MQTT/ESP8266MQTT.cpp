@@ -10,15 +10,14 @@
 #include <BME280I2C.h>
 #include <Wire.h>
 #include "BH1750.h"
-#include <Adafruit_PWMServoDriver.h>
-#include <I2cDiscreteIoExpander.h>
+#include "PCF8575.h"
 
 #include "target.h"
+#include "I2Cexp.h"
 #include "PWMContr.h"
 #include "Setup.h"
 #include "PCF8574.h"
 
-#define SENSOR
 #define DEBUG_ESP_HTTP_UPDATE 1
 
 #define SEALEVELPRESSURE_HPA (1013.25)
@@ -40,15 +39,12 @@ const char* subscriber_hsl_id = "hsl";
 const char* subscriber_switch_id = "switch";
 const char* subscriber_setupmode_id = "setup";
 
-bool haspcf8575 = false;
-bool haspcf8574 = false;
-
 bool metric = true;
 unsigned int dopubsw = 0;
 unsigned int dopubmotion = 0;
 
-uint16_t pwms[PWMCHAN];
-uint16_t hsls[PWMCHAN];
+//uint16_t pwms[PWMCHAN];
+//uint16_t hsls[PWMCHAN];
 
 static uint16_t ioextender;
 
@@ -58,14 +54,14 @@ WiFiClient net;
 MQTTClient client;
 
 //I2C Sensors
-BH1750 lightMeter;
-BME280I2C bme;
+I2Cexp i2cexp;
+//BH1750 *lightMeter;
+//BME280I2C *bme;
 //I2C actuator
-I2cDiscreteIoExpander device;
+PCF8575 *device;
+PCF8574 *exp74;  // add leds to lines      (used as output)
 PWMContr pwmcontr;
 Setup iotsetup;
-
-PCF8574 exp74(0x27);  // add leds to lines      (used as output)
 
 //Config variables
 boolean ap_mode = false;
@@ -80,12 +76,10 @@ unsigned long lastMillis = 0;
 unsigned long luxLastMillis = 0;
 int blinkstate = LOW;
 
-#ifdef SENSOR
 void INT_ReleaseSw(void);
 void INT_Motion(void);
-#endif
 
-void sendData(float temp, float hum, float pres, int lux);
+void sendData();
 void connect(); // <- predefine connect() for setup()
 void setupAP(void);
 
@@ -100,12 +94,10 @@ void setup() {
 	pinMode(LED_PIN, OUTPUT);
 	pinMode(SETUP_PIN, INPUT_PULLUP);
 
-#ifdef SENSOR
 	pinMode(MOTION_PIN, INPUT);
 	pinMode(SW_PIN, INPUT_PULLUP);
 	attachInterrupt(SW_PIN, INT_ReleaseSw, FALLING);
 	attachInterrupt(MOTION_PIN, INT_Motion, CHANGE);
-#endif
 	iotsetup.initSetup();
 
 	if (digitalRead(SETUP_PIN) == LOW) {
@@ -113,35 +105,36 @@ void setup() {
 		ap_mode = true;
 	} else {
 
-#ifdef SENSOR
+//		Wire.begin(I2C_SDA_PIN, I2C_SCL_PIN);
+//		Wire.setClock(400000);
+		i2cexp.initbus(I2C_SDA_PIN, I2C_SCL_PIN, 400000);
+		i2cexp.scanbus();
 
-		Wire.begin(I2C_SDA_PIN, I2C_SCL_PIN);
-		Wire.setClock(400000);
+//		if (i2cexp.hasBH1750 == true) {
+//			lightMeter = new BH1750();
+//			lightMeter->begin();
+//		}
+//		//lightMeter.begin();
+//		if (i2cexp.hasBME280 == true) {
+//			bme = new BME280I2C();
+//			bme->begin();
+//		}
 
-		lightMeter.begin();
+		Serial.println("Could not find PCF8575!");
 
-		if (!bme.begin()) {
-			Serial.println("Could not find BME280 sensor!");
+		if (i2cexp.haspcf8575 == true) {
+			device = new PCF8575();
+			device->digitalWrite(0x0000);
 		}
 
-		uint8_t status = device.digitalWrite(0x0000);
-		if (TWI_SUCCESS != status) {
-			Serial.println("Could not find PCF8575!");
-		} else {
-			haspcf8575 = true;
-		}
-//
-		status = exp74.write8(0);
-		if (TWI_SUCCESS != status) {
-			Serial.println("Could not find PCF8574!");
-		} else {
-			haspcf8574 = true;
-			Serial.println("found PCF8574!");
+		if (i2cexp.haspcf8574 == true) {
+			exp74 = new PCF8574(0x38);
+			exp74->write8(0);
 		}
 
-		pwmcontr.initPWM(iotsetup.getNumleds());
+		if (i2cexp.hasPCA9685 == true)
+			pwmcontr.initPWM(iotsetup.getNumleds());
 
-#endif
 		if (iotsetup.getSsid().length() > 1) {
 			WiFi.begin(iotsetup.getSsid().c_str(), iotsetup.getPasswd().c_str());
 		}
@@ -167,7 +160,6 @@ void setup() {
 //-------------------------------------------
 // Interrupt handler
 //-------------------------------------------
-#ifdef SENSOR
 void INT_ReleaseSw(void) {
 	dopubsw = 1;
 }
@@ -175,7 +167,6 @@ void INT_ReleaseSw(void) {
 void INT_Motion(void) {
 	dopubmotion = 1;
 }
-#endif
 
 String getMacString(void) {
 	uint8_t MAC_array[6];
@@ -211,24 +202,27 @@ void connect() {
 	digitalWrite(LED_PIN, HIGH);
 	//client.subscribe(mqttdevice + "." + mqttlocation + "." + subscriber_led_id);
 	//client.subscribe(mqttdevice + "." + mqttlocation + "." + subscriber_rgb_id);
-	if ((haspcf8575 == true) || (haspcf8574 == true)) {
+	client.subscribe(iotsetup.getMqttdevice() + "." + iotsetup.getMqttlocation() + "." + subscriber_setupmode_id);
+
+	if ((i2cexp.haspcf8575 == true) || (i2cexp.haspcf8574 == true)) {
 		for (int i = 0; i < iotsetup.getNumoutputs(); i++) {
 			Serial.println("Subscribe: " + iotsetup.getMqttdevice() + "." + iotsetup.getMqttlocation() + "." + subscriber_switch_id + "." + i);
 			client.subscribe(iotsetup.getMqttdevice() + "." + iotsetup.getMqttlocation() + "." + subscriber_switch_id + "." + i);
 		}
 		client.subscribe(iotsetup.getMqttdevice() + "." + iotsetup.getMqttlocation() + "." + subscriber_switch_id + ".*");
 	}
-	client.subscribe(iotsetup.getMqttdevice() + "." + iotsetup.getMqttlocation() + "." + subscriber_setupmode_id);
-	for (int i = 0; i < (iotsetup.getNumleds()); i++) {
-		Serial.println("Subscribe: " + iotsetup.getMqttdevice() + "." + iotsetup.getMqttlocation() + "." + subscriber_rgb_id + "." + i);
-		client.subscribe(iotsetup.getMqttdevice() + "." + iotsetup.getMqttlocation() + "." + subscriber_rgb_id + "." + i);
-		//client.subscribe(mqttdevice + "." + mqttlocation + "." + subscriber_hsl_id + "." + i);
-		client.subscribe(
-				iotsetup.getMqttdevice() + "." + iotsetup.getMqttlocation() + "." + subscriber_rgb_id + "." + i + "." + subscriber_switch_id);
-	}
-	client.subscribe(iotsetup.getMqttdevice() + "." + iotsetup.getMqttlocation() + "." + subscriber_rgb_id + ".*");
-	client.subscribe(iotsetup.getMqttdevice() + "." + iotsetup.getMqttlocation() + "." + subscriber_rgb_id + ".*." + subscriber_switch_id);
 
+	if (i2cexp.hasPCA9685 == true) {
+		for (int i = 0; i < (iotsetup.getNumleds()); i++) {
+			Serial.println("Subscribe: " + iotsetup.getMqttdevice() + "." + iotsetup.getMqttlocation() + "." + subscriber_rgb_id + "." + i);
+			client.subscribe(iotsetup.getMqttdevice() + "." + iotsetup.getMqttlocation() + "." + subscriber_rgb_id + "." + i);
+			//client.subscribe(mqttdevice + "." + mqttlocation + "." + subscriber_hsl_id + "." + i);
+			client.subscribe(
+					iotsetup.getMqttdevice() + "." + iotsetup.getMqttlocation() + "." + subscriber_rgb_id + "." + i + "." + subscriber_switch_id);
+		}
+		client.subscribe(iotsetup.getMqttdevice() + "." + iotsetup.getMqttlocation() + "." + subscriber_rgb_id + ".*");
+		client.subscribe(iotsetup.getMqttdevice() + "." + iotsetup.getMqttlocation() + "." + subscriber_rgb_id + ".*." + subscriber_switch_id);
+	}
 }
 
 void pubswitch(int pin, const char* topic, boolean low_is_on) {
@@ -264,7 +258,6 @@ void loop() {
 			connect();
 		}
 
-#ifdef SENSOR
 		if (client.connected()) { //only send when connected to MQTT server
 			if (dopubsw == 1) {
 				pubswitch(SW_PIN, publisher_switch_id, true);
@@ -276,20 +269,31 @@ void loop() {
 
 			if (millis() - lastMillis > 10000) {
 				lastMillis = millis();
-				float temp(NAN), hum(NAN), pres(NAN);
-				uint8_t pressureUnit(4); // unit: B000 = Pa, B001 = hPa, B010 = Hg, B011 = atm, B100 = bar, B101 = torr, B110 = N/m^2, B111 = psi
-				bme.read(pres, temp, hum, metric, pressureUnit); // Parameters: (float& pressure, float& temp, float& humidity, bool hPa = true, bool celsius = false)
-				lux = lightMeter.readLightLevel();
 
-				sendData(temp, hum, pres, lux);
+				i2cexp.getMetrics();
+//				float temp(NAN), hum(NAN), pres(NAN);
+//				uint8_t pressureUnit(4); // unit: B000 = Pa, B001 = hPa, B010 = Hg, B011 = atm, B100 = bar, B101 = torr, B110 = N/m^2, B111 = psi
+//				if (i2cexp.hasBME280 == true) {
+//					bme->read(pres, temp, hum, metric, pressureUnit); // Parameters: (float& pressure, float& temp, float& humidity, bool hPa = true, bool celsius = false)
+//				}
+//				if (i2cexp.hasBH1750 == true)
+//					lux = lightMeter->readLightLevel();
+
+				sendData();
 
 			}
 		}
-#endif
+
 	}
+
 }
 
-void sendData(float temp, float hum, float pres, int luxvalue) {
+void sendData() {
+	float temp = i2cexp.metrics.temp;
+	float hum = i2cexp.metrics.hum;
+	float pres = i2cexp.metrics.pres;
+	int luxvalue = i2cexp.metrics.luxvalue;
+
 	char t[20];
 	dtostrf(temp, 0, 1, t);
 	char h[20];
@@ -311,8 +315,8 @@ void sendData(float temp, float hum, float pres, int luxvalue) {
 
 	client.publish(String(iotsetup.getMqttdevice() + "." + iotsetup.getMqttlocation() + "." + publisher_json_id).c_str(), buffer, size);
 
-	//root.prettyPrintTo(Serial);
-	//Serial.print("\n");
+//root.prettyPrintTo(Serial);
+//Serial.print("\n");
 }
 
 void messageReceived(String topic, String payload, char * bytes, unsigned int length) {
@@ -331,23 +335,19 @@ void messageReceived(String topic, String payload, char * bytes, unsigned int le
 
 		//Check for RGB switch
 		if (topic.endsWith(subscriber_switch_id)) {
-//			switchLedStrip(indstr, payload);
 			pwmcontr.switchLedStrip(indstr, payload);
 			//check for rgb values
 		} else if (payload.startsWith("pwm")) {
 			Serial.print(" PWM ");
-//			pwmLedStrip(indstr, payload);
 			pwmcontr.pwmLedStrip(indstr, payload);
 			//check for hsl values
 		} else if (payload.startsWith("rgb")) {
 			Serial.print(" RGB ");
 			pwmcontr.rgbLedStrip(indstr, payload);
-//			rgbLedStrip(indstr, payload);
 			//check for hsl values
 		} else if (payload.startsWith("hsl")) {
 			Serial.println("PWM hsl-index:" + String(pwmindex) + " channel:" + String(pwmnum));
 			pwmcontr.hslLedStrip(indstr, payload);
-//			hslLedStrip(indstr,payload);
 		}
 	} else if (topic.startsWith(iotsetup.getMqttdevice() + "." + iotsetup.getMqttlocation() + "." + subscriber_switch_id)) {
 		int index = (iotsetup.getMqttdevice() + "." + iotsetup.getMqttlocation() + "." + subscriber_switch_id).length();
@@ -374,11 +374,11 @@ void messageReceived(String topic, String payload, char * bytes, unsigned int le
 			}
 		}
 		// attempt to write 16-bit word
-		if (haspcf8575 == true)
-			status = device.digitalWrite(ioextender);
-		else if (haspcf8574 == true)
-			status = exp74.write8(ioextender);
-		if ((haspcf8575 == true) || (haspcf8574 == true))
+		if (i2cexp.haspcf8575 == true)
+			status = device->digitalWrite(ioextender);
+		else if (i2cexp.haspcf8574 == true)
+			status = exp74->write8(ioextender);
+		if ((i2cexp.haspcf8575 == true) || (i2cexp.haspcf8574 == true))
 			if (status != TWI_SUCCESS) {
 				Serial.print("write error ");
 				Serial.println(status, DEC);
@@ -517,7 +517,7 @@ void launchWeb(int webtype) {
 	Serial.print("SoftAP IP: ");
 	Serial.println(WiFi.softAPIP());
 	createWebServer(webtype);
-	// Start the server
+// Start the server
 	server.begin();
 	Serial.println("Server started");
 }
@@ -562,9 +562,10 @@ void setupAP(void) {
 		aplist += "</option>";
 	}
 	delay(100);
-	//Serial.println(st);
+//Serial.println(st);
 	WiFi.softAP(apssid, passphrase, 0);
 	Serial.println("SoftAp initialized.");
 	launchWeb(1);
 	Serial.println("WebInterface started.");
 }
+
