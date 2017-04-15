@@ -14,37 +14,48 @@ void PWMContr::initPWM(int activeleds) {
 	pwm.begin();
 	pwm.setPWMFreq(1600);  // This is the maximum PWM frequency
 	numleds = activeleds;
-	for (int i = 0; i < PWMCHAN; i++) {
-		pwms[i] = 0;
-		pwm.setPWM(i, 0, 0);
-	}
 
+	for (int i = 0; i < numleds; i++) {
+		control[i].pwmindex = i;
+		control[i].pwm[0] = 0;
+		control[i].pwm[1] = 0;
+		control[i].pwm[2] = 0;
+		control[i].hsl[0] = 0;
+		control[i].hsl[1] = 0;
+		control[i].hsl[2] = 0;
+		control[i].fade = 0;
+		control[i].anim = 0;
+		control[i].state = 1;
+		control[i].colorcounter = 0;
+
+		writePWM(i);
+	}
 }
 
 void PWMContr::switchLedStrip(String pwmstr, String payload) {
 	if (pwmstr.equals("*")) {
 		if (payload.equals("off"))
-			for (int i = 0; i < numleds * 3; i++) {
-				pwm.setPWM(i, 0, 0);
+			for (int i = 0; i < numleds; i++) {
+				control[i].state = 0;
+				writePWM(i);
 			}
 		else
-			for (int i = 0; i < numleds * 3; i++) {
-				pwm.setPWM(i, 0, pwms[i]);
+			for (int i = 0; i < numleds; i++) {
+				control[i].state = 1;
+				writePWM(i);
 			}
 	} else {
 		int pwmindex = pwmstr.toInt();
-		uint8_t pwmnum = pwmindex * 3;
+//		uint8_t pwmnum = pwmindex * 3;
 		if (payload.equals("off")) {
 			Serial.println(" off");
-			pwm.setPWM(pwmnum, 0, 0);
-			pwm.setPWM(pwmnum + 1, 0, 0);
-			pwm.setPWM(pwmnum + 2, 0, 0);
+			control[pwmindex].state = 0;
 		} else {
 			Serial.println(" on");
-			pwm.setPWM(pwmnum, 0, pwms[pwmnum]);
-			pwm.setPWM(pwmnum + 1, 0, pwms[pwmnum + 1]);
-			pwm.setPWM(pwmnum + 2, 0, pwms[pwmnum + 2]);
+			control[pwmindex].state = 1;
+
 		}
+		writePWM(pwmindex);
 	}
 }
 
@@ -59,13 +70,12 @@ void PWMContr::pwmLedStrip(String pwmstr, String payload) {
 	int b = payload.substring(b_start + 1, payload.length() - 1).toInt();
 
 	if (pwmstr.equals("*")) {
-		for (int i = 0; i < numleds; i += 3) {
+		for (int i = 0; i < numleds; i++) {
 			setPWM(i, r, g, b);
 		}
 	} else {
 		int pwmindex = pwmstr.toInt();
-		uint8_t pwmnum = pwmindex * 3;
-		setPWM(pwmnum, r, g, b);
+		setPWM(pwmindex, r, g, b);
 	}
 
 }
@@ -83,21 +93,8 @@ void PWMContr::rgbLedStrip(String pwmstr, String payload) {
 	int b = payload.substring(b_start + 1, payload.length() - 1).toInt() * 16;
 
 	Serial.println("R:" + String(r) + " G:" + String(g) + " B:" + String(b));
-	if (r > MAXPWM)
-		r = MAXPWM;
-	if (g > MAXPWM)
-		g = MAXPWM;
-	if (b > MAXPWM)
-		b = MAXPWM;
 
-	pwms[pwmnum] = r;
-	pwms[pwmnum + 1] = g;
-	pwms[pwmnum + 2] = b;
-
-	pwm.setPWM(pwmnum, 0, pwms[pwmnum]);
-	pwm.setPWM(pwmnum + 1, 0, pwms[pwmnum + 1]);
-	pwm.setPWM(pwmnum + 2, 0, pwms[pwmnum + 2]);
-
+	setPWM(pwmindex, r, g, b);
 }
 
 void PWMContr::hslLedStrip(String pwmstr, String payload) {
@@ -108,98 +105,182 @@ void PWMContr::hslLedStrip(String pwmstr, String payload) {
 	int s_start = payload.indexOf(",", h_start);
 	int l_start = payload.indexOf(",", s_start + 1);
 
-	int h = payload.substring(h_start + 1, s_start).toInt();
-	int s = payload.substring(s_start + 1, l_start).toInt();
-	int l = payload.substring(l_start + 1, payload.length() - 1).toInt();
+	String sh = payload.substring(h_start + 1, s_start);
+	String ss = payload.substring(s_start + 1, l_start);
+	String sl = payload.substring(l_start + 1, payload.length() - 1);
+	int h = 0;
+	int s = 0;
+	int l = 0;
 
-	hsls[pwmnum] = h;
-	hsls[pwmnum + 1] = s;
-	hsls[pwmnum + 2] = l;
+	if (sh.equals("?"))
+		h = control[pwmindex].hsl[0];
+	else
+		h = sh.toInt();
+	if (ss.equals("?"))
+		s = control[pwmindex].hsl[1];
+	else
+		s = ss.toInt();
+	if (sl.equals("?"))
+		l = control[pwmindex].hsl[1];
+	else
+		l = sl.toInt();
 
-	Serial.println("HSL:" + String(h) + "," + String(s) + "," + String(l));
+	Serial.println("HSL:" + sh + "," + ss + "," + sl);
 
-	getRGB(hsls, pwms, pwmnum);
-	//hsi2rgb(h,s,l,pwms,pwmnum);
-
-	pwms[pwmnum] = pgm_read_byte(delog+pwms[pwmnum]) * 16;
-	pwms[pwmnum + 1] = pgm_read_byte(delog+pwms[pwmnum + 1]) * 16;
-	pwms[pwmnum + 2] = pgm_read_byte(delog+pwms[pwmnum + 2]) * 16;
-
-	pwm.setPWM(pwmnum, 0, pwms[pwmnum]);
-	pwm.setPWM(pwmnum + 1, 0, pwms[pwmnum + 1]);
-	pwm.setPWM(pwmnum + 2, 0, pwms[pwmnum + 2]);
-
+	setHSL(pwmindex, h, s, l);
 }
 
-void PWMContr::setPWM(int pwmnum, int r, int g, int b) {
+void PWMContr::setPWM(int index, uint16_t *colors) {
+	setPWM(index, colors[0], colors[1], colors[2]);
+}
+
+void PWMContr::setPWM(int index, uint16_t r, uint16_t g, uint16_t b) {
 	Serial.println("R:" + String(r) + " G:" + String(g) + " B:" + String(b));
-	if (r > MAXPWM)
-		r = MAXPWM;
-	if (g > MAXPWM)
-		g = MAXPWM;
-	if (b > MAXPWM)
-		b = MAXPWM;
+	r = constrain(r, 0, MAXPWM);
+	g = constrain(g, 0, MAXPWM);
+	b = constrain(b, 0, MAXPWM);
 
-	pwms[pwmnum] = r;
-	pwms[pwmnum + 1] = g;
-	pwms[pwmnum + 2] = b;
+	control[index].pwm[0] = r;
+	control[index].pwm[1] = g;
+	control[index].pwm[2] = b;
 
-	pwm.setPWM(pwmnum, 0, pwms[pwmnum]);
-	pwm.setPWM(pwmnum + 1, 0, pwms[pwmnum + 1]);
-	pwm.setPWM(pwmnum + 2, 0, pwms[pwmnum + 2]);
+	writePWM(index);
 }
 
-void PWMContr::getRGB(uint16_t *hsl, uint16_t *pwm, uint16_t index) {
-	uint16_t h = hsl[index];
-	uint16_t s = hsl[index + 1];
-	uint16_t v = hsl[index + 2];
+void PWMContr::setHSL(int index, uint16_t h, uint16_t s, uint16_t l) {
+	control[index].hsl[0] = h;
+	control[index].hsl[1] = s;
+	control[index].hsl[2] = l;
 
-	uint16_t *r = &pwm[index];
-	uint16_t *g = &pwm[index + 1];
-	uint16_t *b = &pwm[index + 2];
+	HSBtoRGB(h, s, l, control[index].pwm);
+	setPWM(index, control[index].pwm);
+}
 
-	uint8_t sector = h / 60U;
-	uint8_t remainder = (h - sector * 60U) * 64U / 15U;  // 64/15 is really 256/60, but lets stay clear of overflows
-	uint8_t p = v * (255U - s) / 255U;  // s and v are (0.0..1.0) --> (0..255), p is (0..255^2)
-	uint8_t q = v * (255UL * 255UL - ((long) s) * remainder) / (255UL * 255UL);  // look, fixed point arithmetic in varying encodings
-	uint8_t t = v * (255UL * 255UL - ((long) s) * (255U - remainder)) / (255UL * 255UL);
-
-	switch (sector) {
-	case 0:
-		*r = v;
-		*g = t;
-		*b = p;
-		break;
-	case 1:
-		*r = q;
-		*g = v;
-		*b = p;
-		break;
-	case 2:
-		*r = p;
-		*g = v;
-		*b = t;
-		break;
-	case 3:
-		*r = p;
-		*g = q;
-		*b = v;
-		break;
-	case 4:
-		*r = t;
-		*g = p;
-		*b = v;
-		break;
-	default:            // case 5:
-		*r = v;
-		*g = p;
-		*b = q;
-		break;
+void PWMContr::writePWM(int index) {
+	int pwmnum = index * 3;
+	if (control[index].state == 0) {
+		writePWM(index, 0, 0, 0);
+	} else {
+		pwm.setPWM(pwmnum, 0, control[index].pwm[0]);
+		pwm.setPWM(pwmnum + 1, 0, control[index].pwm[1]);
+		pwm.setPWM(pwmnum + 2, 0, control[index].pwm[2]);
 	}
+}
+
+void PWMContr::writePWM(int index, uint16_t *colors) {
+	int pwmnum = index * 3;
+	pwm.setPWM(pwmnum, 0, colors[0]);
+	pwm.setPWM(pwmnum + 1, 0, colors[1]);
+	pwm.setPWM(pwmnum + 2, 0, colors[2]);
+}
+
+void PWMContr::writePWM(int index, uint16_t r, uint16_t g, uint16_t b) {
+	r = constrain(r, 0, MAXPWM);
+	g = constrain(g, 0, MAXPWM);
+	b = constrain(b, 0, MAXPWM);
+
+	int pwmnum = index * 3;
+	pwm.setPWM(pwmnum, 0, r);
+	pwm.setPWM(pwmnum + 1, 0, g);
+	pwm.setPWM(pwmnum + 2, 0, b);
 }
 
 void PWMContr::dumpPwms(uint16_t *values) {
 	for (int i = 0; i < PWMCHAN; i++) {
 		Serial.println("channel: " + String(i) + " - " + values[i]);
+	}
+}
+
+void PWMContr::setAnimate(int stripindex, String payload) {
+	if (payload.endsWith("(on)")) {
+		control[stripindex].anim = 1;
+	} else
+		control[stripindex].anim = 0;
+}
+
+void PWMContr::animate(void) {
+	for (int i = 0; i < numleds; i++) {
+		if (control[i].anim == 1) {
+			float colorNumber = control[i].colorcounter > numColors ? control[i].colorcounter - numColors : control[i].colorcounter;
+			int s = 100;
+			int l = control[i].hsl[2];
+			int h = (colorNumber / float(numColors)) * 360;
+			setHSL(i, h, s, l);
+		}
+		control[i].colorcounter = (control[i].colorcounter + 1) % (numColors * 2);
+	}
+}
+
+void PWMContr::HSBtoRGB(int hue, int sat, int bright, uint16_t *colors) {
+
+	// constrain all input variables to expected range
+	hue = constrain(hue, 0, 360);
+	sat = constrain(sat, 0, 100);
+	bright = constrain(bright, 0, 100);
+
+	// define maximum value for RGB array elements
+	float max_rgb_val = H2R_MAX_RGB_val;
+
+	// convert saturation and brightness value to decimals and init r, g, b variables
+	float sat_f = float(sat) / 100.0;
+	float bright_f = float(bright) / 100.0;
+	int r, g, b;
+
+	// If brightness is 0 then color is black (achromatic)
+	// therefore, R, G and B values will all equal to 0
+	if (bright <= 0) {
+		colors[0] = 0;
+		colors[1] = 0;
+		colors[2] = 0;
+	} else {
+
+		// If saturation is 0 then color is gray (achromatic)
+		// therefore, R, G and B values will all equal the current brightness
+		if (sat <= 0) {
+			colors[0] = bright_f * max_rgb_val;
+			colors[1] = bright_f * max_rgb_val;
+			colors[2] = bright_f * max_rgb_val;
+		} else {
+			// if saturation and brightness are greater than 0 then calculate
+			// R, G and B values based on the current hue and brightness
+
+			if (hue >= 0 && hue < 120) {
+				float hue_primary = 1.0 - (float(hue) / 120.0);
+				float hue_secondary = float(hue) / 120.0;
+				float sat_primary = (1.0 - hue_primary) * (1.0 - sat_f);
+				float sat_secondary = (1.0 - hue_secondary) * (1.0 - sat_f);
+				float sat_tertiary = 1.0 - sat_f;
+				r = (bright_f * max_rgb_val) * (hue_primary + sat_primary);
+				g = (bright_f * max_rgb_val) * (hue_secondary + sat_secondary);
+				b = (bright_f * max_rgb_val) * sat_tertiary;
+			}
+
+			else if (hue >= 120 && hue < 240) {
+				float hue_primary = 1.0 - ((float(hue) - 120.0) / 120.0);
+				float hue_secondary = (float(hue) - 120.0) / 120.0;
+				float sat_primary = (1.0 - hue_primary) * (1.0 - sat_f);
+				float sat_secondary = (1.0 - hue_secondary) * (1.0 - sat_f);
+				float sat_tertiary = 1.0 - sat_f;
+				r = (bright_f * max_rgb_val) * sat_tertiary;
+				g = (bright_f * max_rgb_val) * (hue_primary + sat_primary);
+				b = (bright_f * max_rgb_val) * (hue_secondary + sat_secondary);
+			}
+
+			else if (hue >= 240 && hue <= 360) {
+				float hue_primary = 1.0 - ((float(hue) - 240.0) / 120.0);
+				float hue_secondary = (float(hue) - 240.0) / 120.0;
+				float sat_primary = (1.0 - hue_primary) * (1.0 - sat_f);
+				float sat_secondary = (1.0 - hue_secondary) * (1.0 - sat_f);
+				float sat_tertiary = 1.0 - sat_f;
+				r = (bright_f * max_rgb_val) * (hue_secondary + sat_secondary);
+				g = (bright_f * max_rgb_val) * sat_tertiary;
+				b = (bright_f * max_rgb_val) * (hue_primary + sat_primary);
+			}
+
+			colors[0] = r;
+			colors[1] = g;
+			colors[2] = b;
+		}
+
 	}
 }

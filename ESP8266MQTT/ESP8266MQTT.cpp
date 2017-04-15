@@ -7,7 +7,7 @@
 #include <MQTTClient.h>
 #include <ArduinoJson.h>
 
-#include <BME280I2C.h>
+//#include <BME280I2C.h>
 #include <Wire.h>
 #include "BH1750.h"
 #include "PCF8575.h"
@@ -74,6 +74,8 @@ int statusCode;
 
 unsigned long lastMillis = 0;
 unsigned long luxLastMillis = 0;
+unsigned long animLastMillis = 0;
+
 int blinkstate = LOW;
 
 void INT_ReleaseSw(void);
@@ -105,22 +107,8 @@ void setup() {
 		ap_mode = true;
 	} else {
 
-//		Wire.begin(I2C_SDA_PIN, I2C_SCL_PIN);
-//		Wire.setClock(400000);
 		i2cexp.initbus(I2C_SDA_PIN, I2C_SCL_PIN, 400000);
 		i2cexp.scanbus();
-
-//		if (i2cexp.hasBH1750 == true) {
-//			lightMeter = new BH1750();
-//			lightMeter->begin();
-//		}
-//		//lightMeter.begin();
-//		if (i2cexp.hasBME280 == true) {
-//			bme = new BME280I2C();
-//			bme->begin();
-//		}
-
-		Serial.println("Could not find PCF8575!");
 
 		if (i2cexp.haspcf8575 == true) {
 			device = new PCF8575();
@@ -128,8 +116,9 @@ void setup() {
 		}
 
 		if (i2cexp.haspcf8574 == true) {
+			Serial.print("CHECK haspcf8574");
 			exp74 = new PCF8574(0x38);
-			exp74->write8(0);
+			exp74->digitalWrite(0x00);
 		}
 
 		if (i2cexp.hasPCA9685 == true)
@@ -204,7 +193,7 @@ void connect() {
 	//client.subscribe(mqttdevice + "." + mqttlocation + "." + subscriber_rgb_id);
 	client.subscribe(iotsetup.getMqttdevice() + "." + iotsetup.getMqttlocation() + "." + subscriber_setupmode_id);
 
-	if ((i2cexp.haspcf8575 == true) || (i2cexp.haspcf8574 == true)) {
+	if (i2cexp.hasPWM()) {
 		for (int i = 0; i < iotsetup.getNumoutputs(); i++) {
 			Serial.println("Subscribe: " + iotsetup.getMqttdevice() + "." + iotsetup.getMqttlocation() + "." + subscriber_switch_id + "." + i);
 			client.subscribe(iotsetup.getMqttdevice() + "." + iotsetup.getMqttlocation() + "." + subscriber_switch_id + "." + i);
@@ -212,7 +201,7 @@ void connect() {
 		client.subscribe(iotsetup.getMqttdevice() + "." + iotsetup.getMqttlocation() + "." + subscriber_switch_id + ".*");
 	}
 
-	if (i2cexp.hasPCA9685 == true) {
+	if (i2cexp.hasIOexpander()) {
 		for (int i = 0; i < (iotsetup.getNumleds()); i++) {
 			Serial.println("Subscribe: " + iotsetup.getMqttdevice() + "." + iotsetup.getMqttlocation() + "." + subscriber_rgb_id + "." + i);
 			client.subscribe(iotsetup.getMqttdevice() + "." + iotsetup.getMqttlocation() + "." + subscriber_rgb_id + "." + i);
@@ -252,6 +241,13 @@ void loop() {
 		}
 	} else {
 		client.loop();
+
+		if (i2cexp.hasPCA9685 == true) {
+			if (millis() - animLastMillis > 10) {
+				animLastMillis = millis();
+				pwmcontr.animate();
+			}
+		}
 		delay(10); // <- fixes some issues with WiFi stability
 
 		if (!client.connected()) {
@@ -269,18 +265,8 @@ void loop() {
 
 			if (millis() - lastMillis > 10000) {
 				lastMillis = millis();
-
 				i2cexp.getMetrics();
-//				float temp(NAN), hum(NAN), pres(NAN);
-//				uint8_t pressureUnit(4); // unit: B000 = Pa, B001 = hPa, B010 = Hg, B011 = atm, B100 = bar, B101 = torr, B110 = N/m^2, B111 = psi
-//				if (i2cexp.hasBME280 == true) {
-//					bme->read(pres, temp, hum, metric, pressureUnit); // Parameters: (float& pressure, float& temp, float& humidity, bool hPa = true, bool celsius = false)
-//				}
-//				if (i2cexp.hasBH1750 == true)
-//					lux = lightMeter->readLightLevel();
-
 				sendData();
-
 			}
 		}
 
@@ -330,8 +316,8 @@ void messageReceived(String topic, String payload, char * bytes, unsigned int le
 		int ind = (iotsetup.getMqttdevice() + "." + iotsetup.getMqttlocation() + "." + subscriber_rgb_id).length();
 		String indstr = topic.substring(ind + 1, ind + 2);
 		int pwmindex = indstr.toInt();
-		uint8_t pwmnum = pwmindex * 3;
-		Serial.print("PWM rgb-index:" + String(pwmindex) + " channel:" + String(pwmnum));
+		//uint8_t pwmnum = pwmindex * 3;
+		Serial.print("PWM rgb-index:" + String(pwmindex));
 
 		//Check for RGB switch
 		if (topic.endsWith(subscriber_switch_id)) {
@@ -346,10 +332,17 @@ void messageReceived(String topic, String payload, char * bytes, unsigned int le
 			pwmcontr.rgbLedStrip(indstr, payload);
 			//check for hsl values
 		} else if (payload.startsWith("hsl")) {
-			Serial.println("PWM hsl-index:" + String(pwmindex) + " channel:" + String(pwmnum));
+			Serial.println("PWM hsl-index:" + String(pwmindex));
 			pwmcontr.hslLedStrip(indstr, payload);
+		} else if (payload.startsWith("ani")) {
+			Serial.println(" ANIMATION ");
+			pwmcontr.setAnimate(pwmindex, payload);
+		} else if (payload.startsWith("fade")) {
+			Serial.println(" FADE ");
+			pwmcontr.setAnimate(pwmindex, payload);
 		}
 	} else if (topic.startsWith(iotsetup.getMqttdevice() + "." + iotsetup.getMqttlocation() + "." + subscriber_switch_id)) {
+		Serial.println("SWITCH - " + topic);
 		int index = (iotsetup.getMqttdevice() + "." + iotsetup.getMqttlocation() + "." + subscriber_switch_id).length();
 		String snum = topic.substring(index + 1);
 		uint8_t status;
@@ -373,21 +366,27 @@ void messageReceived(String topic, String payload, char * bytes, unsigned int le
 				ioextender |= 1 << num;
 			}
 		}
+		Serial.println("SEND ioexpander out");
 		// attempt to write 16-bit word
-		if (i2cexp.haspcf8575 == true)
+		if (i2cexp.haspcf8575 == true) {
+			Serial.println("haspcf8575");
 			status = device->digitalWrite(ioextender);
-		else if (i2cexp.haspcf8574 == true)
-			status = exp74->write8(ioextender);
-		if ((i2cexp.haspcf8575 == true) || (i2cexp.haspcf8574 == true))
+		} else if (i2cexp.haspcf8574 == true) {
+			Serial.println("haspcf8574");
+			status = exp74->digitalWrite(ioextender);
+		}
+		if (i2cexp.hasIOexpander()) {
 			if (status != TWI_SUCCESS) {
 				Serial.print("write error ");
 				Serial.println(status, DEC);
 			}
 
+		}
 	} else if (topic.equals(iotsetup.getMqttdevice() + "." + iotsetup.getMqttlocation() + "." + subscriber_setupmode_id)) {
 		setupAP();
 		ap_mode = true;
-	}
+	} else
+		Serial.println("Unknown topic!");
 }
 
 void createWebServer(int webtype) {

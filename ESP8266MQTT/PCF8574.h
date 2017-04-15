@@ -19,12 +19,12 @@ class PCF8574
   public:
   PCF8574(int address);
 
-  uint8_t read8();
-  uint8_t read(uint8_t pin);
+  uint8_t digitalRead();
+  uint8_t digitalRead(uint8_t pin);
   uint8_t value();
 
-  int write8(uint8_t value);
-  void write(uint8_t pin, uint8_t value);
+  int digitalWrite(uint8_t value);
+  void digitalWrite(uint8_t pin, uint8_t value);
 
   void toggle(uint8_t pin);
   void shiftRight(uint8_t n=1);

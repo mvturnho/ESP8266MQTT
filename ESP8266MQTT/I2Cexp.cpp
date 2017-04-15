@@ -26,6 +26,7 @@ void I2Cexp::initbus(int SDApin, int SCLpin, uint32_t clock) {
 		bme = new BME280I2C();
 		bme->begin();
 	}
+
 }
 
 bool I2Cexp::scanaddress(int address) {
@@ -53,6 +54,14 @@ void I2Cexp::getMetrics(void) {
 		lux = 0;
 
 	metrics.luxvalue = lux;
+}
+
+bool I2Cexp::hasIOexpander(void){
+	return (haspcf8575 || haspcf8574 );
+}
+
+bool I2Cexp::hasPWM(void){
+	return hasPCA9685;
 }
 
 int I2Cexp::scanbus(void) {

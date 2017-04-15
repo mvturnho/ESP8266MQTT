@@ -13,9 +13,7 @@
 #include <inttypes.h>
 
 #include "BH1750.h"
-#include "PCF8575.h"
 #include <BME280I2C.h>
-#include "PCF8574.h"
 
 #define BH1750_ADDR 	0x23
 #define PCA9685_ADDR	0x40
@@ -49,6 +47,8 @@ public:
 	void initbus(int SDApin, int SCLpin, uint32_t clock = 400000);bool scanaddress(int address);
 	int scanbus(void);
 	void getMetrics(void);
+	bool hasIOexpander(void);
+	bool hasPWM(void);
 
 private:
 	BH1750 *lightMeter;

@@ -20,13 +20,11 @@
 /// I2cDiscreteIoExpander exampleD[8] = { 0, 1, 2, 3, 4, 5, 6, 7 }; // addresses 0..7
 /// ...
 /// \endcode
-PCF8575::PCF8575(uint8_t address)
-{
-  address_ = address & 0b111;
-  ports_ = 0;
-  shouldInvert_ = true;
+PCF8575::PCF8575(uint8_t address) {
+	address_ = address & 0b111;
+	ports_ = 0;
+	shouldInvert_ = true;
 }
-
 
 /// \overload I2cDiscreteIoExpander::I2cDiscreteIoExpander(uint8_t address)
 /// Constructor.
@@ -37,13 +35,11 @@ PCF8575::PCF8575(uint8_t address)
 /// I2cDiscreteIoExpander device;        // implies device address 0
 /// ...
 /// \endcode
-PCF8575::PCF8575()
-{
-  address_ = 0;
-  ports_ = 0;
-  shouldInvert_ = true;
+PCF8575::PCF8575() {
+	address_ = 0;
+	ports_ = 0;
+	shouldInvert_ = true;
 }
-
 
 /// Retrieve discrete values from device.
 /// \required Call this from within \c loop() in order to read from device.
@@ -64,30 +60,24 @@ PCF8575::PCF8575()
 /// }
 /// ...
 /// \endcode
-uint8_t PCF8575::digitalRead()
-{
-  uint8_t hi, lo, status;
+uint8_t PCF8575::digitalRead() {
+	uint8_t hi, lo, status;
 
-  Wire.beginTransmission(BASE_ADDRESS_ | address_);
-  status = Wire.endTransmission();
+	Wire.beginTransmission(BASE_ADDRESS_ | address_);
+	status = Wire.endTransmission();
 
-  if (TWI_SUCCESS == status)
-  {
-    if (Wire.requestFrom(BASE_ADDRESS_ | address_, 2) == 2)
-    {
-      lo = Wire.read();
-      hi = Wire.read();
-      ports_ = shouldInvert_ ? word(~hi, ~lo) : word(hi, lo);
-    }
-    else
-    {
-      return TWI_ERROR;
-    }
-  }
+	if (TWI_SUCCESS == status) {
+		if (Wire.requestFrom(BASE_ADDRESS_ | address_, 2) == 2) {
+			lo = Wire.read();
+			hi = Wire.read();
+			ports_ = shouldInvert_ ? word(~hi, ~lo) : word(hi, lo);
+		} else {
+			return TWI_ERROR;
+		}
+	}
 
-  return status;
+	return status;
 }
-
 
 /// Write discrete values to device.
 /// \required Call this from within \c loop() in order to write to device.
@@ -109,18 +99,17 @@ uint8_t PCF8575::digitalRead()
 /// }
 /// ...
 /// \endcode
-uint8_t PCF8575::digitalWrite(uint16_t ports)
-{
-  ports_ = shouldInvert_ ? ~ports : ports;
-  Wire.beginTransmission(BASE_ADDRESS_ | address_);
-  Wire.write(lowByte(ports_));
-  Wire.write(highByte(ports_));
-  // Wire.write(lowByte(shouldInvert_ ? ~ports_ : ports_));
-  // Wire.write(highByte(shouldInvert_ ? ~ports_ : ports_));
+uint8_t PCF8575::digitalWrite(uint16_t ports) {
+	Serial.println("PCF8575::digitalWrite" + String(ports));
+	ports_ = shouldInvert_ ? ~ports : ports;
+	Wire.beginTransmission(BASE_ADDRESS_ | address_);
+	Wire.write(lowByte(ports_));
+	Wire.write(highByte(ports_));
+	// Wire.write(lowByte(shouldInvert_ ? ~ports_ : ports_));
+	// Wire.write(highByte(shouldInvert_ ? ~ports_ : ports_));
 
-  return Wire.endTransmission();
+	return Wire.endTransmission();
 }
-
 
 /// Retrieve device address.
 /// \optional This function is for testing and troubleshooting.
@@ -133,11 +122,9 @@ uint8_t PCF8575::digitalWrite(uint16_t ports)
 /// address = device.getAddress();
 /// ...
 /// \endcode
-uint8_t PCF8575::getAddress()
-{
-  return address_;
+uint8_t PCF8575::getAddress() {
+	return address_;
 }
-
 
 /// Retrieve ports 1 (P17..P10), 0 (P07..P00).
 /// \required Call this from within \c loop() to retrieve ports.
@@ -150,11 +137,9 @@ uint8_t PCF8575::getAddress()
 /// ports = device.getPorts();
 /// ...
 /// \endcode
-uint16_t PCF8575::getPorts()
-{
-  return ports_;
+uint16_t PCF8575::getPorts() {
+	return ports_;
 }
-
 
 /// Enable bitwise inversion.
 /// All bits will be inverted prior to future read/write operations.
@@ -168,12 +153,10 @@ uint16_t PCF8575::getPorts()
 /// \endcode
 /// \sa I2cDiscreteIoExpander::disableBitwiseInversion()
 /// \sa I2cDiscreteIoExpander::isInverted()
-void PCF8575::enableBitwiseInversion()
-{
-  ports_ = shouldInvert_ ? ports_ : ~ports_;
-  shouldInvert_ = true;
+void PCF8575::enableBitwiseInversion() {
+	ports_ = shouldInvert_ ? ports_ : ~ports_;
+	shouldInvert_ = true;
 }
-
 
 /// Disable bitwise inversion.
 /// Bits will not be inverted prior to future read/write operations.
@@ -187,12 +170,10 @@ void PCF8575::enableBitwiseInversion()
 /// \endcode
 /// \sa I2cDiscreteIoExpander::enableBitwiseInversion()
 /// \sa I2cDiscreteIoExpander::isInverted()
-void PCF8575::disableBitwiseInversion()
-{
-  ports_ = shouldInvert_ ? ~ports_ : ports_;
-  shouldInvert_ = false;
+void PCF8575::disableBitwiseInversion() {
+	ports_ = shouldInvert_ ? ~ports_ : ports_;
+	shouldInvert_ = false;
 }
-
 
 /// Indicate whether bitwise inversion is enabled.
 /// \return status of bitwise inversion (false=not inverted, true=inverted)
@@ -209,7 +190,6 @@ void PCF8575::disableBitwiseInversion()
 /// \endcode
 /// \sa I2cDiscreteIoExpander::enableBitwiseInversion()
 /// \sa I2cDiscreteIoExpander::disableBitwiseInversion()
-bool PCF8575::isInverted()
-{
-  return shouldInvert_;
+bool PCF8575::isInverted() {
+	return shouldInvert_;
 }
