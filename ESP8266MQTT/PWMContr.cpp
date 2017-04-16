@@ -92,7 +92,7 @@ void PWMContr::rgbLedStrip(String pwmstr, String payload) {
 	int g = payload.substring(g_start + 1, b_start).toInt() * 16;
 	int b = payload.substring(b_start + 1, payload.length() - 1).toInt() * 16;
 
-	Serial.println("R:" + String(r) + " G:" + String(g) + " B:" + String(b));
+	//Serial.println("R:" + String(r) + " G:" + String(g) + " B:" + String(b));
 
 	setPWM(pwmindex, r, g, b);
 }
@@ -125,7 +125,7 @@ void PWMContr::hslLedStrip(String pwmstr, String payload) {
 	else
 		l = sl.toInt();
 
-	Serial.println("HSL:" + sh + "," + ss + "," + sl);
+	//Serial.println("HSL:" + sh + "," + ss + "," + sl);
 
 	setHSL(pwmindex, h, s, l);
 }
@@ -135,7 +135,7 @@ void PWMContr::setPWM(int index, uint16_t *colors) {
 }
 
 void PWMContr::setPWM(int index, uint16_t r, uint16_t g, uint16_t b) {
-	Serial.println("R:" + String(r) + " G:" + String(g) + " B:" + String(b));
+	//Serial.println("R:" + String(r) + " G:" + String(g) + " B:" + String(b));
 	r = constrain(r, 0, MAXPWM);
 	g = constrain(g, 0, MAXPWM);
 	b = constrain(b, 0, MAXPWM);
@@ -153,7 +153,8 @@ void PWMContr::setHSL(int index, uint16_t h, uint16_t s, uint16_t l) {
 	control[index].hsl[2] = l;
 
 	HSBtoRGB(h, s, l, control[index].pwm);
-	setPWM(index, control[index].pwm);
+	//setPWM(index, control[index].pwm);
+	writePWM(index);
 }
 
 void PWMContr::writePWM(int index) {
@@ -192,22 +193,31 @@ void PWMContr::dumpPwms(uint16_t *values) {
 }
 
 void PWMContr::setAnimate(int stripindex, String payload) {
-	if (payload.endsWith("(on)")) {
-		control[stripindex].anim = 1;
-	} else
+	if (payload.endsWith("(0)")) {
 		control[stripindex].anim = 0;
+	} else {
+		String tm = payload.substring(4, payload.length() - 1);
+		Serial.println("animtime = " + tm);
+		control[stripindex].animationtime_ms = tm.toInt();
+		control[stripindex].anim = 1;
+	}
 }
 
 void PWMContr::animate(void) {
 	for (int i = 0; i < numleds; i++) {
-		if (control[i].anim == 1) {
-			float colorNumber = control[i].colorcounter > numColors ? control[i].colorcounter - numColors : control[i].colorcounter;
-			int s = 100;
-			int l = control[i].hsl[2];
-			int h = (colorNumber / float(numColors)) * 360;
-			setHSL(i, h, s, l);
+		if ((control[i].anim == 1) && (control[i].state == 1)) {
+			if (millis() - control[i].animLastMillis > control[i].animationtime_ms) {
+				control[i].animLastMillis = millis();
+				//Serial.println("anim: " + String(i));
+				float colorNumber =
+						control[i].colorcounter > control[i].numColors ? control[i].colorcounter - control[i].numColors : control[i].colorcounter;
+				int h = (colorNumber / float(control[i].numColors)) * 360;
+				int s = 100;
+				int l = control[i].hsl[2];
+				setHSL(i, h, s, l);
+				control[i].colorcounter = (control[i].colorcounter + 1) % (control[i].numColors * 2);
+			}
 		}
-		control[i].colorcounter = (control[i].colorcounter + 1) % (numColors * 2);
 	}
 }
 

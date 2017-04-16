@@ -243,10 +243,10 @@ void loop() {
 		client.loop();
 
 		if (i2cexp.hasPCA9685 == true) {
-			if (millis() - animLastMillis > 10) {
-				animLastMillis = millis();
+//			if (millis() - animLastMillis > pwmcontr.animationtime_ms) {
+//				animLastMillis = millis();
 				pwmcontr.animate();
-			}
+//			}
 		}
 		delay(10); // <- fixes some issues with WiFi stability
 
