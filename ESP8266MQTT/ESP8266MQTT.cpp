@@ -245,7 +245,7 @@ void loop() {
 		if (i2cexp.hasPCA9685 == true) {
 //			if (millis() - animLastMillis > pwmcontr.animationtime_ms) {
 //				animLastMillis = millis();
-				pwmcontr.animate();
+			pwmcontr.animate();
 //			}
 		}
 		delay(10); // <- fixes some issues with WiFi stability
@@ -267,6 +267,15 @@ void loop() {
 				lastMillis = millis();
 				i2cexp.getMetrics();
 				sendData();
+
+				Serial.print("read sonar: ");
+				Wire.requestFrom(8, 1);
+				if (Wire.available() == 1) {
+					int c = Wire.read();
+					Serial.print(c,DEC);
+					pwmcontr.hslLedStrip("0","hsl(?,?,"+String(c)+")");
+				}
+				Serial.println("   end");
 			}
 		}
 
