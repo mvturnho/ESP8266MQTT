@@ -74,7 +74,6 @@ int statusCode;
 
 unsigned long lastMillis = 0;
 unsigned long luxLastMillis = 0;
-unsigned long animLastMillis = 0;
 
 int blinkstate = LOW;
 
@@ -193,7 +192,7 @@ void connect() {
 	//client.subscribe(mqttdevice + "." + mqttlocation + "." + subscriber_rgb_id);
 	client.subscribe(iotsetup.getMqttdevice() + "." + iotsetup.getMqttlocation() + "." + subscriber_setupmode_id);
 
-	if (i2cexp.hasPWM()) {
+	if (i2cexp.hasIOexpander()) {
 		for (int i = 0; i < iotsetup.getNumoutputs(); i++) {
 			Serial.println("Subscribe: " + iotsetup.getMqttdevice() + "." + iotsetup.getMqttlocation() + "." + subscriber_switch_id + "." + i);
 			client.subscribe(iotsetup.getMqttdevice() + "." + iotsetup.getMqttlocation() + "." + subscriber_switch_id + "." + i);
@@ -201,16 +200,16 @@ void connect() {
 		client.subscribe(iotsetup.getMqttdevice() + "." + iotsetup.getMqttlocation() + "." + subscriber_switch_id + ".*");
 	}
 
-	if (i2cexp.hasIOexpander()) {
+	if (i2cexp.hasPWM()) {
 		for (int i = 0; i < (iotsetup.getNumleds()); i++) {
 			Serial.println("Subscribe: " + iotsetup.getMqttdevice() + "." + iotsetup.getMqttlocation() + "." + subscriber_rgb_id + "." + i);
 			client.subscribe(iotsetup.getMqttdevice() + "." + iotsetup.getMqttlocation() + "." + subscriber_rgb_id + "." + i);
 			//client.subscribe(mqttdevice + "." + mqttlocation + "." + subscriber_hsl_id + "." + i);
-			client.subscribe(
-					iotsetup.getMqttdevice() + "." + iotsetup.getMqttlocation() + "." + subscriber_rgb_id + "." + i + "." + subscriber_switch_id);
+			//client.subscribe(
+			//		iotsetup.getMqttdevice() + "." + iotsetup.getMqttlocation() + "." + subscriber_rgb_id + "." + i + "." + subscriber_switch_id);
 		}
 		client.subscribe(iotsetup.getMqttdevice() + "." + iotsetup.getMqttlocation() + "." + subscriber_rgb_id + ".*");
-		client.subscribe(iotsetup.getMqttdevice() + "." + iotsetup.getMqttlocation() + "." + subscriber_rgb_id + ".*." + subscriber_switch_id);
+		//client.subscribe(iotsetup.getMqttdevice() + "." + iotsetup.getMqttlocation() + "." + subscriber_rgb_id + ".*." + subscriber_switch_id);
 	}
 }
 
@@ -243,10 +242,7 @@ void loop() {
 		client.loop();
 
 		if (i2cexp.hasPCA9685 == true) {
-//			if (millis() - animLastMillis > pwmcontr.animationtime_ms) {
-//				animLastMillis = millis();
 			pwmcontr.animate();
-//			}
 		}
 		delay(10); // <- fixes some issues with WiFi stability
 
@@ -268,14 +264,14 @@ void loop() {
 				i2cexp.getMetrics();
 				sendData();
 
-				Serial.print("read sonar: ");
-				Wire.requestFrom(8, 1);
-				if (Wire.available() == 1) {
-					int c = Wire.read();
-					Serial.print(c,DEC);
-					pwmcontr.hslLedStrip("0","hsl(?,?,"+String(c)+")");
-				}
-				Serial.println("   end");
+//				Serial.print("read sonar: ");
+//				Wire.requestFrom(8, 1);
+//				if (Wire.available() == 1) {
+//					int c = Wire.read();
+//					Serial.print(c,DEC);
+//					pwmcontr.hslLedStrip("0","hsl(?,?,"+String(c)+")");
+//				}
+//				Serial.println("   end");
 			}
 		}
 
@@ -328,11 +324,7 @@ void messageReceived(String topic, String payload, char * bytes, unsigned int le
 		//uint8_t pwmnum = pwmindex * 3;
 		Serial.print("PWM rgb-index:" + String(pwmindex));
 
-		//Check for RGB switch
-		if (topic.endsWith(subscriber_switch_id)) {
-			pwmcontr.switchLedStrip(indstr, payload);
-			//check for rgb values
-		} else if (payload.startsWith("pwm")) {
+		if (payload.startsWith("pwm")) {
 			Serial.print(" PWM ");
 			pwmcontr.pwmLedStrip(indstr, payload);
 			//check for hsl values
@@ -345,10 +337,13 @@ void messageReceived(String topic, String payload, char * bytes, unsigned int le
 			pwmcontr.hslLedStrip(indstr, payload);
 		} else if (payload.startsWith("ani")) {
 			Serial.println(" ANIMATION ");
-			pwmcontr.setAnimate(pwmindex, payload);
-		} else if (payload.startsWith("fade")) {
+			pwmcontr.setAnimate(indstr, payload);
+		} else if (payload.startsWith("fad")) {
 			Serial.println(" FADE ");
-			pwmcontr.setAnimate(pwmindex, payload);
+			pwmcontr.setFade(indstr, payload);
+		} else if ((payload.startsWith("on"))  || (payload.startsWith("off"))){
+			Serial.println(" SWITCH ");
+			pwmcontr.switchLedStrip(indstr, payload);
 		}
 	} else if (topic.startsWith(iotsetup.getMqttdevice() + "." + iotsetup.getMqttlocation() + "." + subscriber_switch_id)) {
 		Serial.println("SWITCH - " + topic);

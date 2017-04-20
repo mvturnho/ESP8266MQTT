@@ -23,9 +23,10 @@ void PWMContr::initPWM(int activeleds) {
 		control[i].hsl[0] = 0;
 		control[i].hsl[1] = 0;
 		control[i].hsl[2] = 0;
+		control[i].hsl[3] = 0;
 		control[i].fade = 0;
 		control[i].anim = 0;
-		control[i].state = 1;
+		control[i].state = 0;
 		control[i].colorcounter = 0;
 
 		writePWM(i);
@@ -37,25 +38,31 @@ void PWMContr::switchLedStrip(String pwmstr, String payload) {
 		if (payload.equals("off"))
 			for (int i = 0; i < numleds; i++) {
 				control[i].state = 0;
-				writePWM(i);
+				control[i].hsl[3] = control[i].hsl[2];
+				if (control[i].fade == 0)
+					writePWM(i);
 			}
 		else
 			for (int i = 0; i < numleds; i++) {
 				control[i].state = 1;
-				writePWM(i);
+				if (control[i].fade == 0)
+					writePWM(i);
 			}
 	} else {
 		int pwmindex = pwmstr.toInt();
-//		uint8_t pwmnum = pwmindex * 3;
 		if (payload.equals("off")) {
 			Serial.println(" off");
 			control[pwmindex].state = 0;
+			control[pwmindex].hsl[3] = control[pwmindex].hsl[2];
 		} else {
 			Serial.println(" on");
 			control[pwmindex].state = 1;
-
 		}
-		writePWM(pwmindex);
+		if (control[pwmindex].fade == 0) {
+			Serial.println("do switch");
+			writePWM(pwmindex);
+		}
+
 	}
 }
 
@@ -121,7 +128,7 @@ void PWMContr::hslLedStrip(String pwmstr, String payload) {
 	else
 		s = ss.toInt();
 	if (sl.equals("?"))
-		l = control[pwmindex].hsl[1];
+		l = control[pwmindex].hsl[2];
 	else
 		l = sl.toInt();
 
@@ -147,19 +154,29 @@ void PWMContr::setPWM(int index, uint16_t r, uint16_t g, uint16_t b) {
 	writePWM(index);
 }
 
+void PWMContr::setHSL(int index) {
+	HSBtoRGB(index);
+	writePWM(index);
+}
+
 void PWMContr::setHSL(int index, uint16_t h, uint16_t s, uint16_t l) {
 	control[index].hsl[0] = h;
 	control[index].hsl[1] = s;
-	control[index].hsl[2] = l;
+	if (control[index].fade == 0)
+		control[index].hsl[2] = l;
+	else
+		control[index].hsl[3] = l;
+//	control[index].hsl[3] = l;
 
 	HSBtoRGB(h, s, l, control[index].pwm);
-	//setPWM(index, control[index].pwm);
-	writePWM(index);
+
+//	if (control[index].state > 0)
+		writePWM(index);
 }
 
 void PWMContr::writePWM(int index) {
 	int pwmnum = index * 3;
-	if (control[index].state == 0) {
+	if ((control[index].state == 0) && (control[index].fade == 0)) {
 		writePWM(index, 0, 0, 0);
 	} else {
 		pwm.setPWM(pwmnum, 0, control[index].pwm[0]);
@@ -192,52 +209,119 @@ void PWMContr::dumpPwms(uint16_t *values) {
 	}
 }
 
-void PWMContr::setAnimate(int stripindex, String payload) {
-	if (payload.endsWith("(0)")) {
-		control[stripindex].anim = 0;
+void PWMContr::setAnimate(String pwmstr, String payload) {
+	if (pwmstr.equals("*")) {
+		for (int i = 0; i < numleds; i++)
+			setAnimate(i, payload);
+
 	} else {
-		String tm = payload.substring(4, payload.length() - 1);
+		int stripindex = pwmstr.toInt();
+		setAnimate(stripindex, payload);
+	}
+}
+
+void PWMContr::setAnimate(int index, String payload) {
+	if (payload.endsWith("(0)")) {
+		control[index].anim = 0;
+	} else {
+		int start = payload.indexOf('(');
+		String tm = payload.substring(start + 1, payload.length() - 1);
 		Serial.println("animtime = " + tm);
-		control[stripindex].animationtime_ms = tm.toInt();
-		control[stripindex].anim = 1;
+		control[index].anim = tm.toInt();
+	}
+}
+
+void PWMContr::setFade(String pwmstr, String payload) {
+	if (pwmstr.equals("*")) {
+		for (int i = 0; i < numleds; i++)
+			setFade(i, payload);
+
+	} else {
+		int stripindex = pwmstr.toInt();
+		setFade(stripindex, payload);
+	}
+}
+
+void PWMContr::setFade(int index, String payload) {
+	if (payload.endsWith("(0)")) {
+		control[index].fade = 0;
+		control[index].hsl[2] = control[index].hsl[3]; //reset previous bright
+		setHSL(index);
+	} else {
+		if (control[index].state == 0)
+			control[index].hsl[2] = 0; //prevent led to go from on to off
+		int start = payload.indexOf('(');
+		String tm = payload.substring(start + 1, payload.length() - 1);
+		Serial.println("fadetime = " + tm);
+		control[index].fade = tm.toInt();
 	}
 }
 
 void PWMContr::animate(void) {
 	for (int i = 0; i < numleds; i++) {
-		if ((control[i].anim == 1) && (control[i].state == 1)) {
-			if (millis() - control[i].animLastMillis > control[i].animationtime_ms) {
-				control[i].animLastMillis = millis();
-				//Serial.println("anim: " + String(i));
-				float colorNumber =
-						control[i].colorcounter > control[i].numColors ? control[i].colorcounter - control[i].numColors : control[i].colorcounter;
-				int h = (colorNumber / float(control[i].numColors)) * 360;
-				int s = 100;
-				int l = control[i].hsl[2];
-				setHSL(i, h, s, l);
-				control[i].colorcounter = (control[i].colorcounter + 1) % (control[i].numColors * 2);
+		if (control[i].state == 1) {
+			if (control[i].anim > 0) {
+				if (millis() - control[i].animLastMillis > control[i].anim) {
+					control[i].animLastMillis = millis();
+					//Serial.println("anim: " + String(i));
+					float colorNumber =
+							control[i].colorcounter > control[i].numColors ? control[i].colorcounter - control[i].numColors : control[i].colorcounter;
+					int h = (colorNumber / float(control[i].numColors)) * 360;
+					int s = 100;
+					int l = control[i].hsl[2];
+					setHSL(i, h, s, l);
+					control[i].colorcounter = (control[i].colorcounter + 1) % (control[i].numColors * 2);
+				}
+			}
+
+			if ((control[i].fade > 0) && (control[i].hsl[2] < control[i].hsl[3])) {
+				if (millis() - control[i].fadeLastMillis > control[i].fade) {
+					control[i].fadeLastMillis = millis();
+					control[i].hsl[2]++;
+					setHSL(i);
+					//Serial.print(">");
+				}
+			}
+
+		} else {
+			if ((control[i].fade > 0) && (control[i].hsl[2] > 0)) {
+				if (millis() - control[i].fadeLastMillis > control[i].fade) {
+					control[i].fadeLastMillis = millis();
+					control[i].hsl[2]--;
+					setHSL(i);
+					//Serial.print("<");
+				}
 			}
 		}
 	}
 }
 
+void PWMContr::HSBtoRGB(int index) {
+	int h = control[index].hsl[0];
+	int s = control[index].hsl[1];
+	int l = control[index].hsl[2];
+
+	HSBtoRGB(h, s, l, control[index].pwm);
+
+}
+
 void PWMContr::HSBtoRGB(int hue, int sat, int bright, uint16_t *colors) {
 
-	// constrain all input variables to expected range
+// constrain all input variables to expected range
 	hue = constrain(hue, 0, 360);
 	sat = constrain(sat, 0, 100);
-	bright = constrain(bright, 0, 100);
+	bright = constrain(bright, 0, MAXBRIGHT);
 
-	// define maximum value for RGB array elements
+// define maximum value for RGB array elements
 	float max_rgb_val = H2R_MAX_RGB_val;
 
-	// convert saturation and brightness value to decimals and init r, g, b variables
+// convert saturation and brightness value to decimals and init r, g, b variables
 	float sat_f = float(sat) / 100.0;
-	float bright_f = float(bright) / 100.0;
+	float bright_f = float(bright) / float(MAXBRIGHT);
 	int r, g, b;
 
-	// If brightness is 0 then color is black (achromatic)
-	// therefore, R, G and B values will all equal to 0
+// If brightness is 0 then color is black (achromatic)
+// therefore, R, G and B values will all equal to 0
 	if (bright <= 0) {
 		colors[0] = 0;
 		colors[1] = 0;
