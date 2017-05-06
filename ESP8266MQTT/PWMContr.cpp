@@ -17,13 +17,13 @@ void PWMContr::initPWM(int activeleds) {
 
 	for (int i = 0; i < numleds; i++) {
 		control[i].pwmindex = i;
-		control[i].pwm[0] = 0;
-		control[i].pwm[1] = 0;
-		control[i].pwm[2] = 0;
-		control[i].hsl[0] = 0;
-		control[i].hsl[1] = 0;
-		control[i].hsl[2] = 0;
-		control[i].hsl[3] = 0;
+		control[i].pwm[R] = 0;
+		control[i].pwm[G] = 0;
+		control[i].pwm[B] = 0;
+		control[i].hsl[H] = 0;
+		control[i].hsl[S] = 0;
+		control[i].hsl[L] = 0;
+		control[i].hsl[Ls] = 0;
 		control[i].fade = 0;
 		control[i].anim = 0;
 		control[i].state = 0;
@@ -35,35 +35,25 @@ void PWMContr::initPWM(int activeleds) {
 
 void PWMContr::switchLedStrip(String pwmstr, String payload) {
 	if (pwmstr.equals("*")) {
-		if (payload.equals("off"))
-			for (int i = 0; i < numleds; i++) {
-				control[i].state = 0;
-				control[i].hsl[3] = control[i].hsl[2];
-				if (control[i].fade == 0)
-					writePWM(i);
-			}
-		else
-			for (int i = 0; i < numleds; i++) {
-				control[i].state = 1;
-				if (control[i].fade == 0)
-					writePWM(i);
-			}
+		for (int i = 0; i < numleds; i++) {
+			switchLedStrip(i, payload);
+		}
 	} else {
 		int pwmindex = pwmstr.toInt();
-		if (payload.equals("off")) {
-			Serial.println(" off");
-			control[pwmindex].state = 0;
-			control[pwmindex].hsl[3] = control[pwmindex].hsl[2];
-		} else {
-			Serial.println(" on");
-			control[pwmindex].state = 1;
-		}
-		if (control[pwmindex].fade == 0) {
-			Serial.println("do switch");
-			writePWM(pwmindex);
-		}
-
+		switchLedStrip(pwmindex, payload);
 	}
+}
+
+void PWMContr::switchLedStrip(int index, String payload) {
+	control[index].fade = 0;
+	if (payload.equals("off")) {
+		Serial.println(" off");
+		control[index].state = 0;
+	} else {
+		Serial.println(" on");
+		control[index].state = 1;
+	}
+	writePWM(index);
 }
 
 void PWMContr::pwmLedStrip(String pwmstr, String payload) {
@@ -99,7 +89,7 @@ void PWMContr::rgbLedStrip(String pwmstr, String payload) {
 	int g = payload.substring(g_start + 1, b_start).toInt() * 16;
 	int b = payload.substring(b_start + 1, payload.length() - 1).toInt() * 16;
 
-	//Serial.println("R:" + String(r) + " G:" + String(g) + " B:" + String(b));
+//Serial.println("R:" + String(r) + " G:" + String(g) + " B:" + String(b));
 
 	setPWM(pwmindex, r, g, b);
 }
@@ -119,21 +109,25 @@ void PWMContr::hslLedStrip(String pwmstr, String payload) {
 	int s = 0;
 	int l = 0;
 
+	if(control[pwmindex].anim > 0) {
+		sh="?";
+		ss="?";
+	}
+
 	if (sh.equals("?"))
-		h = control[pwmindex].hsl[0];
+		h = control[pwmindex].hsl[H];
 	else
 		h = sh.toInt();
 	if (ss.equals("?"))
-		s = control[pwmindex].hsl[1];
+		s = control[pwmindex].hsl[S];
 	else
 		s = ss.toInt();
 	if (sl.equals("?"))
-		l = control[pwmindex].hsl[2];
+		l = control[pwmindex].hsl[L];
 	else
 		l = sl.toInt();
 
-	//Serial.println("HSL:" + sh + "," + ss + "," + sl);
-
+//Serial.println("HSL:" + sh + "," + ss + "," + sl);
 	setHSL(pwmindex, h, s, l);
 }
 
@@ -142,14 +136,14 @@ void PWMContr::setPWM(int index, uint16_t *colors) {
 }
 
 void PWMContr::setPWM(int index, uint16_t r, uint16_t g, uint16_t b) {
-	//Serial.println("R:" + String(r) + " G:" + String(g) + " B:" + String(b));
+//Serial.println("R:" + String(r) + " G:" + String(g) + " B:" + String(b));
 	r = constrain(r, 0, MAXPWM);
 	g = constrain(g, 0, MAXPWM);
 	b = constrain(b, 0, MAXPWM);
 
-	control[index].pwm[0] = r;
-	control[index].pwm[1] = g;
-	control[index].pwm[2] = b;
+	control[index].pwm[R] = r;
+	control[index].pwm[G] = g;
+	control[index].pwm[B] = b;
 
 	writePWM(index);
 }
@@ -160,18 +154,13 @@ void PWMContr::setHSL(int index) {
 }
 
 void PWMContr::setHSL(int index, uint16_t h, uint16_t s, uint16_t l) {
-	control[index].hsl[0] = h;
-	control[index].hsl[1] = s;
-	if (control[index].fade == 0)
-		control[index].hsl[2] = l;
-	else
-		control[index].hsl[3] = l;
-//	control[index].hsl[3] = l;
+	control[index].hsl[H] = h;
+	control[index].hsl[S] = s;
+	control[index].hsl[L] = l;
+	control[index].hsl[Ls] = l;
 
 	HSBtoRGB(h, s, l, control[index].pwm);
-
-//	if (control[index].state > 0)
-		writePWM(index);
+	writePWM(index);
 }
 
 void PWMContr::writePWM(int index) {
@@ -179,17 +168,17 @@ void PWMContr::writePWM(int index) {
 	if ((control[index].state == 0) && (control[index].fade == 0)) {
 		writePWM(index, 0, 0, 0);
 	} else {
-		pwm.setPWM(pwmnum, 0, control[index].pwm[0]);
-		pwm.setPWM(pwmnum + 1, 0, control[index].pwm[1]);
-		pwm.setPWM(pwmnum + 2, 0, control[index].pwm[2]);
+		pwm.setPWM(pwmnum, 0, control[index].pwm[R]);
+		pwm.setPWM(pwmnum + 1, 0, control[index].pwm[G]);
+		pwm.setPWM(pwmnum + 2, 0, control[index].pwm[B]);
 	}
 }
 
 void PWMContr::writePWM(int index, uint16_t *colors) {
 	int pwmnum = index * 3;
-	pwm.setPWM(pwmnum, 0, colors[0]);
-	pwm.setPWM(pwmnum + 1, 0, colors[1]);
-	pwm.setPWM(pwmnum + 2, 0, colors[2]);
+	pwm.setPWM(pwmnum, 0, colors[R]);
+	pwm.setPWM(pwmnum + 1, 0, colors[G]);
+	pwm.setPWM(pwmnum + 2, 0, colors[B]);
 }
 
 void PWMContr::writePWM(int index, uint16_t r, uint16_t g, uint16_t b) {
@@ -198,9 +187,9 @@ void PWMContr::writePWM(int index, uint16_t r, uint16_t g, uint16_t b) {
 	b = constrain(b, 0, MAXPWM);
 
 	int pwmnum = index * 3;
-	pwm.setPWM(pwmnum, 0, r);
-	pwm.setPWM(pwmnum + 1, 0, g);
-	pwm.setPWM(pwmnum + 2, 0, b);
+	pwm.setPWM(pwmnum, R, r);
+	pwm.setPWM(pwmnum + G, 0, g);
+	pwm.setPWM(pwmnum + B, 0, b);
 }
 
 void PWMContr::dumpPwms(uint16_t *values) {
@@ -221,13 +210,24 @@ void PWMContr::setAnimate(String pwmstr, String payload) {
 }
 
 void PWMContr::setAnimate(int index, String payload) {
+	int state = 1;
 	if (payload.endsWith("(0)")) {
-		control[index].anim = 0;
-	} else {
-		int start = payload.indexOf('(');
-		String tm = payload.substring(start + 1, payload.length() - 1);
-		Serial.println("animtime = " + tm);
-		control[index].anim = tm.toInt();
+		state = 0;
+	}
+	if (state != control[index].state) {
+		if (state == 0) {
+			control[index].anim = 0;
+			control[index].state = 0;
+			control[index].hsl[Ls] = control[index].hsl[L];
+			writePWM(index); //immediate off
+		} else {
+			int start = payload.indexOf('(');
+			String tm = payload.substring(start + 1, payload.length() - 1);
+			Serial.println("animtime = " + tm);
+			control[index].anim = tm.toInt();
+			control[index].state = 1;
+			control[index].hsl[L] = control[index].hsl[Ls]; //restore bright
+		}
 	}
 }
 
@@ -235,7 +235,6 @@ void PWMContr::setFade(String pwmstr, String payload) {
 	if (pwmstr.equals("*")) {
 		for (int i = 0; i < numleds; i++)
 			setFade(i, payload);
-
 	} else {
 		int stripindex = pwmstr.toInt();
 		setFade(stripindex, payload);
@@ -243,17 +242,21 @@ void PWMContr::setFade(String pwmstr, String payload) {
 }
 
 void PWMContr::setFade(int index, String payload) {
-	if (payload.endsWith("(0)")) {
-		control[index].fade = 0;
-		control[index].hsl[2] = control[index].hsl[3]; //reset previous bright
-		setHSL(index);
-	} else {
+	int start = payload.indexOf('(');
+	String param = payload.substring(start + 1, payload.length() - 1);
+	start = param.indexOf(',');
+	String state = param.substring(0, start);
+	String time = param.substring(start + 1, param.length());
+	Serial.println("state=" + state + " fadetime=" + time);
+
+	if (state.toInt() != control[index].state) {
+		control[index].state = state.toInt();
+		control[index].fade = time.toInt();
+
 		if (control[index].state == 0)
-			control[index].hsl[2] = 0; //prevent led to go from on to off
-		int start = payload.indexOf('(');
-		String tm = payload.substring(start + 1, payload.length() - 1);
-		Serial.println("fadetime = " + tm);
-		control[index].fade = tm.toInt();
+			control[index].hsl[Ls] = control[index].hsl[L];  //save the bright for fade in or switch on
+		else if (control[index].hsl[Ls] == control[index].hsl[L])
+			control[index].hsl[L] = 0;
 	}
 }
 
@@ -274,32 +277,34 @@ void PWMContr::animate(void) {
 				}
 			}
 
-			if ((control[i].fade > 0) && (control[i].hsl[2] < control[i].hsl[3])) {
+			if ((control[i].fade > 0) && (control[i].hsl[L] < control[i].hsl[Ls])) {
 				if (millis() - control[i].fadeLastMillis > control[i].fade) {
 					control[i].fadeLastMillis = millis();
-					control[i].hsl[2]++;
+					control[i].hsl[L]++;
 					setHSL(i);
 					//Serial.print(">");
 				}
-			}
+			} else
+				control[i].fade = 0;
 
 		} else {
-			if ((control[i].fade > 0) && (control[i].hsl[2] > 0)) {
+			if ((control[i].fade > 0) && (control[i].hsl[L] > 0)) {
 				if (millis() - control[i].fadeLastMillis > control[i].fade) {
 					control[i].fadeLastMillis = millis();
-					control[i].hsl[2]--;
+					control[i].hsl[L]--;
 					setHSL(i);
 					//Serial.print("<");
 				}
-			}
+			} else
+				control[i].fade = 0;
 		}
 	}
 }
 
 void PWMContr::HSBtoRGB(int index) {
-	int h = control[index].hsl[0];
-	int s = control[index].hsl[1];
-	int l = control[index].hsl[2];
+	int h = control[index].hsl[H];
+	int s = control[index].hsl[S];
+	int l = control[index].hsl[L];
 
 	HSBtoRGB(h, s, l, control[index].pwm);
 
@@ -323,17 +328,17 @@ void PWMContr::HSBtoRGB(int hue, int sat, int bright, uint16_t *colors) {
 // If brightness is 0 then color is black (achromatic)
 // therefore, R, G and B values will all equal to 0
 	if (bright <= 0) {
-		colors[0] = 0;
-		colors[1] = 0;
-		colors[2] = 0;
+		colors[R] = 0;
+		colors[G] = 0;
+		colors[B] = 0;
 	} else {
 
 		// If saturation is 0 then color is gray (achromatic)
 		// therefore, R, G and B values will all equal the current brightness
 		if (sat <= 0) {
-			colors[0] = bright_f * max_rgb_val;
-			colors[1] = bright_f * max_rgb_val;
-			colors[2] = bright_f * max_rgb_val;
+			colors[R] = bright_f * max_rgb_val;
+			colors[G] = bright_f * max_rgb_val;
+			colors[B] = bright_f * max_rgb_val;
 		} else {
 			// if saturation and brightness are greater than 0 then calculate
 			// R, G and B values based on the current hue and brightness
@@ -371,9 +376,9 @@ void PWMContr::HSBtoRGB(int hue, int sat, int bright, uint16_t *colors) {
 				b = (bright_f * max_rgb_val) * (hue_primary + sat_primary);
 			}
 
-			colors[0] = r;
-			colors[1] = g;
-			colors[2] = b;
+			colors[R] = r;
+			colors[G] = g;
+			colors[B] = b;
 		}
 
 	}

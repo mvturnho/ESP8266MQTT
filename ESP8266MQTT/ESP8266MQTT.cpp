@@ -31,20 +31,21 @@ String version = "TRAP17_SENSOR";
 const char* publisher_json_id = "json";
 
 const char* publisher_switch_id = "switch";
-const char* publisher_motion_id = "motion";
+//const char* publisher_motion_id = "motion";
 
 const char* subscriber_led_id = "led";
 const char* subscriber_rgb_id = "rgb";
 const char* subscriber_hsl_id = "hsl";
-const char* subscriber_switch_id = "switch";
+const char* subscriber_out_id = "out";
 const char* subscriber_setupmode_id = "setup";
 
 bool metric = true;
-unsigned int dopubsw = 0;
-unsigned int dopubmotion = 0;
+volatile int dopubsw = -1;
+//unsigned int dopubmotion = 0;
 
 //uint16_t pwms[PWMCHAN];
 //uint16_t hsls[PWMCHAN];
+volatile uint8 sw[8];
 
 static uint16_t ioextender;
 
@@ -77,8 +78,12 @@ unsigned long luxLastMillis = 0;
 
 int blinkstate = LOW;
 
-void INT_ReleaseSw(void);
-void INT_Motion(void);
+void INT_ReleaseSw0(void);
+void INT_ReleaseSw1(void);
+void INT_ReleaseSw2(void);
+void INT_ReleaseSw3(void);
+void INT_ReleaseSw4(void);
+//void INT_Motion(void);
 
 void sendData();
 void connect(); // <- predefine connect() for setup()
@@ -93,12 +98,18 @@ void setup() {
 	WiFi.mode(WIFI_STA);
 
 	pinMode(LED_PIN, OUTPUT);
-	pinMode(SETUP_PIN, INPUT_PULLUP);
 
-	pinMode(MOTION_PIN, INPUT);
 	pinMode(SW_PIN, INPUT_PULLUP);
-	attachInterrupt(SW_PIN, INT_ReleaseSw, FALLING);
-	attachInterrupt(MOTION_PIN, INT_Motion, CHANGE);
+	pinMode(SETUP_PIN, INPUT_PULLUP);
+	pinMode(MOTION_PIN1, INPUT_PULLUP);
+	pinMode(MOTION_PIN2, INPUT_PULLUP);
+	pinMode(MOTION_PIN3, INPUT_PULLUP);
+
+	attachInterrupt(SW_PIN, INT_ReleaseSw0, CHANGE);
+	attachInterrupt(SETUP_PIN, INT_ReleaseSw1, CHANGE);
+	attachInterrupt(MOTION_PIN1, INT_ReleaseSw2, CHANGE);
+	attachInterrupt(MOTION_PIN2, INT_ReleaseSw3, CHANGE);
+	attachInterrupt(MOTION_PIN3, INT_ReleaseSw4, CHANGE);
 	iotsetup.initSetup();
 
 	if (digitalRead(SETUP_PIN) == LOW) {
@@ -148,12 +159,25 @@ void setup() {
 //-------------------------------------------
 // Interrupt handler
 //-------------------------------------------
-void INT_ReleaseSw(void) {
+void INT_ReleaseSw0(void) {
+	sw[0] = digitalRead(SW_PIN);
+	dopubsw = 0;
+}
+void INT_ReleaseSw1(void) {
+	sw[1] = digitalRead(SETUP_PIN);
 	dopubsw = 1;
 }
-
-void INT_Motion(void) {
-	dopubmotion = 1;
+void INT_ReleaseSw2(void) {
+	sw[2] = digitalRead(MOTION_PIN1);
+	dopubsw = 2;
+}
+void INT_ReleaseSw3(void) {
+	sw[3] = digitalRead(MOTION_PIN2);
+	dopubsw = 3;
+}
+void INT_ReleaseSw4(void) {
+	sw[4] = digitalRead(MOTION_PIN3);
+	dopubsw = 4;
 }
 
 String getMacString(void) {
@@ -194,10 +218,10 @@ void connect() {
 
 	if (i2cexp.hasIOexpander()) {
 		for (int i = 0; i < iotsetup.getNumoutputs(); i++) {
-			Serial.println("Subscribe: " + iotsetup.getMqttdevice() + "." + iotsetup.getMqttlocation() + "." + subscriber_switch_id + "." + i);
-			client.subscribe(iotsetup.getMqttdevice() + "." + iotsetup.getMqttlocation() + "." + subscriber_switch_id + "." + i);
+			Serial.println("Subscribe: " + iotsetup.getMqttdevice() + "." + iotsetup.getMqttlocation() + "." + subscriber_out_id + "." + i);
+			client.subscribe(iotsetup.getMqttdevice() + "." + iotsetup.getMqttlocation() + "." + subscriber_out_id + "." + i);
 		}
-		client.subscribe(iotsetup.getMqttdevice() + "." + iotsetup.getMqttlocation() + "." + subscriber_switch_id + ".*");
+		client.subscribe(iotsetup.getMqttdevice() + "." + iotsetup.getMqttlocation() + "." + subscriber_out_id + ".*");
 	}
 
 	if (i2cexp.hasPWM()) {
@@ -215,13 +239,12 @@ void connect() {
 
 void pubswitch(int pin, const char* topic, boolean low_is_on) {
 	Serial.print("SW press ");
-	Serial.println(topic);
-	int value = digitalRead(pin);
-	if (value == low_is_on) {
-		client.publish(iotsetup.getMqttdevice() + "." + iotsetup.getMqttlocation() + "." + topic, "off");
+	Serial.println(topic + String(pin)+"="+String(sw[pin]));
+	if (sw[pin] == low_is_on) {
+		client.publish(iotsetup.getMqttdevice() + "." + iotsetup.getMqttlocation() + "." + topic + "." + pin, "off");
 		//digitalWrite(LED_PIN, LOW);
 	} else {
-		client.publish(iotsetup.getMqttdevice() + "." + iotsetup.getMqttlocation() + "." + topic, "on");
+		client.publish(iotsetup.getMqttdevice() + "." + iotsetup.getMqttlocation() + "." + topic + "." + pin, "on");
 		//digitalWrite(LED_PIN, HIGH);
 	}
 }
@@ -251,12 +274,9 @@ void loop() {
 		}
 
 		if (client.connected()) { //only send when connected to MQTT server
-			if (dopubsw == 1) {
-				pubswitch(SW_PIN, publisher_switch_id, true);
-				dopubsw = 0;
-			} else if (dopubmotion == 1) {
-				pubswitch(MOTION_PIN, publisher_motion_id, false);
-				dopubmotion = 0;
+			if (dopubsw > -1) {
+				pubswitch(dopubsw, publisher_switch_id, true);
+				dopubsw = -1;
 			}
 
 			if (millis() - lastMillis > 10000) {
@@ -264,14 +284,6 @@ void loop() {
 				i2cexp.getMetrics();
 				sendData();
 
-//				Serial.print("read sonar: ");
-//				Wire.requestFrom(8, 1);
-//				if (Wire.available() == 1) {
-//					int c = Wire.read();
-//					Serial.print(c,DEC);
-//					pwmcontr.hslLedStrip("0","hsl(?,?,"+String(c)+")");
-//				}
-//				Serial.println("   end");
 			}
 		}
 
@@ -341,13 +353,13 @@ void messageReceived(String topic, String payload, char * bytes, unsigned int le
 		} else if (payload.startsWith("fad")) {
 			Serial.println(" FADE ");
 			pwmcontr.setFade(indstr, payload);
-		} else if ((payload.startsWith("on"))  || (payload.startsWith("off"))){
+		} else if ((payload.startsWith("on")) || (payload.startsWith("off"))) {
 			Serial.println(" SWITCH ");
 			pwmcontr.switchLedStrip(indstr, payload);
 		}
-	} else if (topic.startsWith(iotsetup.getMqttdevice() + "." + iotsetup.getMqttlocation() + "." + subscriber_switch_id)) {
+	} else if (topic.startsWith(iotsetup.getMqttdevice() + "." + iotsetup.getMqttlocation() + "." + subscriber_out_id)) {
 		Serial.println("SWITCH - " + topic);
-		int index = (iotsetup.getMqttdevice() + "." + iotsetup.getMqttlocation() + "." + subscriber_switch_id).length();
+		int index = (iotsetup.getMqttdevice() + "." + iotsetup.getMqttlocation() + "." + subscriber_out_id).length();
 		String snum = topic.substring(index + 1);
 		uint8_t status;
 		if (snum.equals("*")) {

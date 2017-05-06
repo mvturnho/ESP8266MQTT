@@ -15,6 +15,16 @@
 #define MAXBRIGHT 100
 #define MAXLEDSSTRIPS 5
 #define H2R_MAX_RGB_val 4095.0
+#define NUMCOLORS  255
+
+#define H 0
+#define S 1
+#define L 2
+#define Ls 3
+
+#define R 0
+#define G 1
+#define B 2
 
 class PWMContr {
 public:
@@ -23,6 +33,7 @@ public:
 	PWMContr();
 	void initPWM(int activeleds);
 	void switchLedStrip(String pwmstr, String payload);
+	void switchLedStrip(int index, String payload);
 	void pwmLedStrip(String pwmstr, String payload);
 	void rgbLedStrip(String pwmstr, String payload);
 	void hslLedStrip(String pwmstr, String payload);
@@ -42,7 +53,7 @@ private:
 		int fade = 0;
 		int state = 1;
 		int colorcounter = 0;
-		int numColors = 255;
+		int numColors = NUMCOLORS;
 		unsigned long animLastMillis = 0;
 		unsigned long fadeLastMillis = 0;
 	};

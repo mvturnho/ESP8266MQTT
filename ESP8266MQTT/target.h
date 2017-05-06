@@ -15,8 +15,9 @@
 #define SW_PIN 		D3
 #define I2C_SCL_PIN	D4
 //#define IOEXT_INT	D5
-#define MOTION_PIN 	D6     // what digital pin we're connected to
-//#define RELAY1		D7
+#define MOTION_PIN1 	D5
+#define MOTION_PIN2 	D6     // what digital pin we're connected to
+#define MOTION_PIN3		D7
 
 //EEPROM data locations
 #define SSID_EPOS	0		//32
