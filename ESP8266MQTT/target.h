@@ -8,6 +8,8 @@
 #ifndef TARGET_H_
 #define TARGET_H_
 
+#define DEBUG
+
 //Harware layout
 #define LED_PIN 	D0
 #define SETUP_PIN	D1

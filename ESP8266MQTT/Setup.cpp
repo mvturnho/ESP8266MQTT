@@ -20,38 +20,38 @@ void Setup::initSetup() {
 }
 
 void Setup::readSettingsFromEeprom(void) {
-	ssid = readEeprom(ssid, SSID_EPOS, 32);
+	ssid = readStringEeprom(ssid, SSID_EPOS, 32);
 	Serial.println("SSID: " + ssid);
 
-	passwd = readEeprom(passwd, PWD_EPOS, 32);
+	passwd = readStringEeprom(passwd, PWD_EPOS, 32);
 	Serial.println("PASS: " + passwd);
 
-	otahost = readEeprom(otahost, OTAS_EPOS, 32);
-	otaport = readEeprom(otaport, OTAP_EPOS, 8);
-	otaurl = readEeprom(otaurl, OTAU_EPOS, 32);
+	otahost = readStringEeprom(otahost, OTAS_EPOS, 32);
+	otaport = readStringEeprom(otaport, OTAP_EPOS, 8);
+	otaurl = readStringEeprom(otaurl, OTAU_EPOS, 32);
 	Serial.println("OTA SERVER: " + otahost + ":" + otaport + otaurl);
 
-	mqtthost = readEeprom(mqtthost, MQTS_EPOS, 32);
-	mqttport = readEeprom(mqttport, MQTP_EPOS, 8);
-	mqttdevice = readEeprom(mqttdevice, MQTD_EPOS, 16);
-	mqttlocation = readEeprom(mqttlocation, MQTL_EPOS, 16);
-	mqttclientid = readEeprom(WiFi.macAddress(), MQTC_EPOS, 32);
-	mqttuser = readEeprom(mqttuser, MQTU_EPOS, 16);
-	mqttpassword = readEeprom(mqttpassword, MQTW_EPOS, 16);
+	mqtthost = readStringEeprom(mqtthost, MQTS_EPOS, 32);
+	mqttport = readStringEeprom(mqttport, MQTP_EPOS, 8);
+	mqttdevice = readStringEeprom(mqttdevice, MQTD_EPOS, 16);
+	mqttlocation = readStringEeprom(mqttlocation, MQTL_EPOS, 16);
+	mqttclientid = readStringEeprom(WiFi.macAddress(), MQTC_EPOS, 32);
+	mqttuser = readStringEeprom(mqttuser, MQTU_EPOS, 16);
+	mqttpassword = readStringEeprom(mqttpassword, MQTW_EPOS, 16);
 	Serial.println("MQTT SERVER: " + mqtthost + ":" + mqttport + "/" + mqttdevice + "." + mqttlocation);
 	Serial.println("MQTT Cliet ID: " + mqttclientid);
 
 	String snumleds = String(numleds);
-	snumleds = readEeprom(snumleds, NUMSTRIP, 8);
+	snumleds = readStringEeprom(snumleds, NUMSTRIP, 8);
 	numleds = snumleds.toInt();
 
 	String snumout = String(numoutputs);
-	snumout = readEeprom(snumout, NUMOUTP, 8);
+	snumout = readStringEeprom(snumout, NUMOUTP, 8);
 	numoutputs = snumout.toInt();
 
 }
 
-String Setup::readEeprom(String string, int start, int length) {
+String Setup::readStringEeprom(String string, int start, int length) {
 	String def = string;
 	string = "";
 	int end = start + length;
@@ -67,7 +67,14 @@ String Setup::readEeprom(String string, int start, int length) {
 	return string;
 }
 
-int Setup::saveEeprom(String string, int start) {
+int Setup::readIntEeprom(int start) {
+	byte high = EEPROM.read(start); //read the first half
+	byte low = EEPROM.read(start + 1); //read the second half
+	int xVal = (high << 8) + low; //reconstruct the integer
+	return xVal;
+}
+
+int Setup::saveStringEeprom(String string, int start) {
 	int i = 0;
 	Serial.println("save " + string + " from " + start);
 	if (string.length() > 0) {
@@ -80,16 +87,33 @@ int Setup::saveEeprom(String string, int start) {
 	return i + start;
 }
 
-String Setup::getHTML(){
+int Setup::saveIntEeprom(int value, int start) {
+	int i = 0;
+//	Serial.println("save " + string + " from " + start);
+	EEPROM.write(start, highByte(value)); //write the first half
+	EEPROM.write(start + 1, lowByte(value)); //write the second half
+	return start + 2;
+}
+
+void Setup::commit(void) {
+	EEPROM.commit();
+}
+
+String Setup::getHTML() {
 	String content = "";
-	content += "</td><td><label>password: </label></td><td><input type='text' name='pass' value='"+passwd+"' length=64></td></tr>";
-	content += "<tr><td><label>OTA host: </label></td><td><input name='otaserver' value='"+otahost+"' length=32></td><td><label>OTA port: </label></td><td><input name='otaport' value='"+otaport+"' length=8></td></tr>";
-	content += "<tr><td><label>OTA url: </label></td><td><input name='otaurl' value='"+otaurl+"' length=32></td></tr>";
-	content += "<tr><td><label>MQTT: </label></td><td><input name='mqttserver' value='"+mqtthost+"' length=32></td><td><label>port: </label></td><td><input name='mqttport' value='"+mqttport+"' length=8></td></tr>";
-	content += "<tr><td><label>MQTT dev: </label></td><td><input name='mqttdevice' value='"+mqttdevice+"' length=16></td><td><label>MQTT location: </label></td><td><input name='mqttlocation' value='"+mqttlocation+"' length=16></td></tr>";
-	content += "<tr><td><label>MQTT clientid: </label></td><td><input name='mqttclid' value='"+mqttclientid+"' length=32></td></tr>";
-	content += "<tr><td><label>MQTT user: </label></td><td><input name='mqttuser' value='"+mqttuser+"' length=16></td><td><label>MQTT password: </label></td><td><input name='mqttpwd' value='"+mqttpassword+"' length=16></td></tr>";
-	content += "<tr><td><label>#Led Strips: </label></td><td><input name='numleds' value='"+String(numleds)+"' length=8></td></tr>";
-	content += "<tr><td><label>#PCF8575: </label></td><td><input name='numoutputs' value='"+String(numoutputs)+"' length=8></td></tr>";
+	content += "</td><td><label>password: </label></td><td><input type='text' name='pass' value='" + passwd + "' length=64></td></tr>";
+	content += "<tr><td><label>OTA host: </label></td><td><input name='otaserver' value='" + otahost
+			+ "' length=32></td><td><label>OTA port: </label></td><td><input name='otaport' value='" + otaport + "' length=8></td></tr>";
+	content += "<tr><td><label>OTA url: </label></td><td><input name='otaurl' value='" + otaurl + "' length=32></td></tr>";
+	content += "<tr><td><label>MQTT: </label></td><td><input name='mqttserver' value='" + mqtthost
+			+ "' length=32></td><td><label>port: </label></td><td><input name='mqttport' value='" + mqttport + "' length=8></td></tr>";
+	content += "<tr><td><label>MQTT dev: </label></td><td><input name='mqttdevice' value='" + mqttdevice
+			+ "' length=16></td><td><label>MQTT location: </label></td><td><input name='mqttlocation' value='" + mqttlocation
+			+ "' length=16></td></tr>";
+	content += "<tr><td><label>MQTT clientid: </label></td><td><input name='mqttclid' value='" + mqttclientid + "' length=32></td></tr>";
+	content += "<tr><td><label>MQTT user: </label></td><td><input name='mqttuser' value='" + mqttuser
+			+ "' length=16></td><td><label>MQTT password: </label></td><td><input name='mqttpwd' value='" + mqttpassword + "' length=16></td></tr>";
+	content += "<tr><td><label>#Led Strips: </label></td><td><input name='numleds' value='" + String(numleds) + "' length=8></td></tr>";
+	content += "<tr><td><label>#PCF8575: </label></td><td><input name='numoutputs' value='" + String(numoutputs) + "' length=8></td></tr>";
 	return content;
 }

@@ -298,6 +298,7 @@ void PWMContr::animate(void) {
 			} else
 				control[i].fade = 0;
 		}
+		yield();
 	}
 }
 

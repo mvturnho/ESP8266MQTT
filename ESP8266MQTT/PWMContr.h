@@ -15,7 +15,7 @@
 #define MAXBRIGHT 100
 #define MAXLEDSSTRIPS 5
 #define H2R_MAX_RGB_val 4095.0
-#define NUMCOLORS  255
+#define NUMCOLORS  1024
 
 #define H 0
 #define S 1

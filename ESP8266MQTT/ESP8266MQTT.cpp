@@ -25,6 +25,7 @@
 #define PWMCHAN 16
 #define MAXPWM 4095
 #define MAXRELAY 16
+#define MAXSW 4
 
 String version = "TRAP17_SENSOR";
 
@@ -39,13 +40,14 @@ const char* subscriber_hsl_id = "hsl";
 const char* subscriber_out_id = "out";
 const char* subscriber_setupmode_id = "setup";
 
-bool metric = true;
-volatile int dopubsw = -1;
-//unsigned int dopubmotion = 0;
+struct swdata {
+	bool publish = false;
+	uint8 state = 0;
+};
 
-//uint16_t pwms[PWMCHAN];
-//uint16_t hsls[PWMCHAN];
-volatile uint8 sw[8];
+bool metric = true;
+
+volatile swdata sw[MAXSW];
 
 static uint16_t ioextender;
 
@@ -56,9 +58,6 @@ MQTTClient client;
 
 //I2C Sensors
 I2Cexp i2cexp;
-//BH1750 *lightMeter;
-//BME280I2C *bme;
-//I2C actuator
 PCF8575 *device;
 PCF8574 *exp74;  // add leds to lines      (used as output)
 PWMContr pwmcontr;
@@ -83,7 +82,6 @@ void INT_ReleaseSw1(void);
 void INT_ReleaseSw2(void);
 void INT_ReleaseSw3(void);
 void INT_ReleaseSw4(void);
-//void INT_Motion(void);
 
 void sendData();
 void connect(); // <- predefine connect() for setup()
@@ -160,37 +158,37 @@ void setup() {
 // Interrupt handler
 //-------------------------------------------
 void INT_ReleaseSw0(void) {
-	sw[0] = digitalRead(SW_PIN);
-	dopubsw = 0;
+	sw[0].state = digitalRead(SW_PIN);
+	sw[0].publish = true;
 }
 void INT_ReleaseSw1(void) {
-	sw[1] = digitalRead(SETUP_PIN);
-	dopubsw = 1;
+	sw[1].state = digitalRead(SETUP_PIN);
+	sw[1].publish = true;
 }
 void INT_ReleaseSw2(void) {
-	sw[2] = digitalRead(MOTION_PIN1);
-	dopubsw = 2;
+	sw[2].state = digitalRead(MOTION_PIN1);
+	sw[2].publish = true;
 }
 void INT_ReleaseSw3(void) {
-	sw[3] = digitalRead(MOTION_PIN2);
-	dopubsw = 3;
+	sw[3].state = digitalRead(MOTION_PIN2);
+	sw[3].publish = true;
 }
 void INT_ReleaseSw4(void) {
-	sw[4] = digitalRead(MOTION_PIN3);
-	dopubsw = 4;
+	sw[4].state = digitalRead(MOTION_PIN3);
+	sw[4].publish = true;
 }
 
-String getMacString(void) {
-	uint8_t MAC_array[6];
-	String macaddress = "";
-	WiFi.macAddress(MAC_array);
-
-	for (int i = 0; i < sizeof(MAC_array); ++i) {
-		macaddress.concat(String(MAC_array[i], HEX));
-	}
-
-	return macaddress;
-}
+//String getMacString(void) {
+//	uint8_t MAC_array[6];
+//	String macaddress = "";
+//	WiFi.macAddress(MAC_array);
+//
+//	for (int i = 0; i < sizeof(MAC_array); ++i) {
+//		macaddress.concat(String(MAC_array[i], HEX));
+//	}
+//
+//	return macaddress;
+//}
 
 void connect() {
 	Serial.println();
@@ -212,10 +210,9 @@ void connect() {
 	Serial.println();
 	Serial.println("connected!");
 	digitalWrite(LED_PIN, HIGH);
-	//client.subscribe(mqttdevice + "." + mqttlocation + "." + subscriber_led_id);
-	//client.subscribe(mqttdevice + "." + mqttlocation + "." + subscriber_rgb_id);
+	//subscribe to setup
 	client.subscribe(iotsetup.getMqttdevice() + "." + iotsetup.getMqttlocation() + "." + subscriber_setupmode_id);
-
+	//subscribe to output
 	if (i2cexp.hasIOexpander()) {
 		for (int i = 0; i < iotsetup.getNumoutputs(); i++) {
 			Serial.println("Subscribe: " + iotsetup.getMqttdevice() + "." + iotsetup.getMqttlocation() + "." + subscriber_out_id + "." + i);
@@ -223,29 +220,25 @@ void connect() {
 		}
 		client.subscribe(iotsetup.getMqttdevice() + "." + iotsetup.getMqttlocation() + "." + subscriber_out_id + ".*");
 	}
-
+	//subscribe to rgb
 	if (i2cexp.hasPWM()) {
 		for (int i = 0; i < (iotsetup.getNumleds()); i++) {
 			Serial.println("Subscribe: " + iotsetup.getMqttdevice() + "." + iotsetup.getMqttlocation() + "." + subscriber_rgb_id + "." + i);
 			client.subscribe(iotsetup.getMqttdevice() + "." + iotsetup.getMqttlocation() + "." + subscriber_rgb_id + "." + i);
-			//client.subscribe(mqttdevice + "." + mqttlocation + "." + subscriber_hsl_id + "." + i);
-			//client.subscribe(
-			//		iotsetup.getMqttdevice() + "." + iotsetup.getMqttlocation() + "." + subscriber_rgb_id + "." + i + "." + subscriber_switch_id);
 		}
 		client.subscribe(iotsetup.getMqttdevice() + "." + iotsetup.getMqttlocation() + "." + subscriber_rgb_id + ".*");
-		//client.subscribe(iotsetup.getMqttdevice() + "." + iotsetup.getMqttlocation() + "." + subscriber_rgb_id + ".*." + subscriber_switch_id);
 	}
 }
 
-void pubswitch(int pin, const char* topic, boolean low_is_on) {
+void pubswitch(int pin, const char* topic) {
 	Serial.print("SW press ");
-	Serial.println(topic + String(pin)+"="+String(sw[pin]));
-	if (sw[pin] == low_is_on) {
+
+	if (sw[pin].state == 0) {
 		client.publish(iotsetup.getMqttdevice() + "." + iotsetup.getMqttlocation() + "." + topic + "." + pin, "off");
-		//digitalWrite(LED_PIN, LOW);
+		Serial.println(topic + String(pin) + "= off");
 	} else {
 		client.publish(iotsetup.getMqttdevice() + "." + iotsetup.getMqttlocation() + "." + topic + "." + pin, "on");
-		//digitalWrite(LED_PIN, HIGH);
+		Serial.println(topic + String(pin) + "= on");
 	}
 }
 
@@ -262,30 +255,38 @@ void loop() {
 			digitalWrite(LED_PIN, blinkstate);
 		}
 	} else {
+		if (!client.connected()) {
+			connect();
+		}
+
 		client.loop();
 
 		if (i2cexp.hasPCA9685 == true) {
 			pwmcontr.animate();
 		}
-		delay(10); // <- fixes some issues with WiFi stability
+		//delay(10); // <- fixes some issues with WiFi stability
 
-		if (!client.connected()) {
-			connect();
-		}
+//		if (client.connected()) { //only send when connected to MQTT server
+//		if (dopubsw > -1) {
+//			pubswitch(dopubsw, publisher_switch_id);
+//			dopubsw = -1;
+//		}
 
-		if (client.connected()) { //only send when connected to MQTT server
-			if (dopubsw > -1) {
-				pubswitch(dopubsw, publisher_switch_id, true);
-				dopubsw = -1;
-			}
-
-			if (millis() - lastMillis > 10000) {
-				lastMillis = millis();
-				i2cexp.getMetrics();
-				sendData();
-
+		for (int i = 0; i < MAXSW; i++) {
+			if (sw[i].publish) {
+				pubswitch(i, publisher_switch_id);
+				sw[i].publish = false;
 			}
 		}
+		//i2cexp.getMetrics();
+
+		if (millis() - lastMillis > 10000) {
+			lastMillis = millis();
+			//sendData();
+		}
+		//i2cexp.getMetrics();
+
+//		}
 
 	}
 
@@ -313,7 +314,7 @@ void sendData() {
 	data["pressure"] = pres;
 	data["lux"] = luxvalue;
 
-	char buffer[512];
+	char buffer[200];
 	int size = root.printTo(buffer, sizeof(buffer));
 
 	client.publish(String(iotsetup.getMqttdevice() + "." + iotsetup.getMqttlocation() + "." + publisher_json_id).c_str(), buffer, size);
@@ -458,20 +459,20 @@ void createWebServer(int webtype) {
 					EEPROM.write(i, 0);
 				}
 
-				iotsetup.saveEeprom(qsid,SSID_EPOS);
-				iotsetup.saveEeprom(qpass,PWD_EPOS);
-				iotsetup.saveEeprom(qotas,OTAS_EPOS);
-				iotsetup.saveEeprom(qotap,OTAP_EPOS);
-				iotsetup.saveEeprom(qotau,OTAU_EPOS);
-				iotsetup.saveEeprom(qmqtts,MQTS_EPOS);
-				iotsetup.saveEeprom(qmqttp,MQTP_EPOS);
-				iotsetup.saveEeprom(qmqttd,MQTD_EPOS);
-				iotsetup.saveEeprom(qmqttl,MQTL_EPOS);
-				iotsetup.saveEeprom(qmqttc,MQTC_EPOS);
-				iotsetup.saveEeprom(qmqttu,MQTU_EPOS);
-				iotsetup.saveEeprom(qmqttw,MQTW_EPOS);
-				iotsetup.saveEeprom(qnl,NUMSTRIP);
-				iotsetup.saveEeprom(qnout,NUMOUTP);
+				iotsetup.saveStringEeprom(qsid,SSID_EPOS);
+				iotsetup.saveStringEeprom(qpass,PWD_EPOS);
+				iotsetup.saveStringEeprom(qotas,OTAS_EPOS);
+				iotsetup.saveStringEeprom(qotap,OTAP_EPOS);
+				iotsetup.saveStringEeprom(qotau,OTAU_EPOS);
+				iotsetup.saveStringEeprom(qmqtts,MQTS_EPOS);
+				iotsetup.saveStringEeprom(qmqttp,MQTP_EPOS);
+				iotsetup.saveStringEeprom(qmqttd,MQTD_EPOS);
+				iotsetup.saveStringEeprom(qmqttl,MQTL_EPOS);
+				iotsetup.saveStringEeprom(qmqttc,MQTC_EPOS);
+				iotsetup.saveStringEeprom(qmqttu,MQTU_EPOS);
+				iotsetup.saveStringEeprom(qmqttw,MQTW_EPOS);
+				iotsetup.saveStringEeprom(qnl,NUMSTRIP);
+				iotsetup.saveStringEeprom(qnout,NUMOUTP);
 
 				EEPROM.commit();
 				delay(500);

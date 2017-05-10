@@ -17,8 +17,11 @@ public:
 	Setup();
 	void initSetup();
 	void readSettingsFromEeprom(void);
-	String readEeprom(String string, int start, int length);
-	int saveEeprom(String string, int start);
+	String readStringEeprom(String string, int start, int length);
+	int readIntEeprom(int start);
+	int saveStringEeprom(String string, int start);
+	int saveIntEeprom(int value, int start);
+	void commit(void);
 
 	String getHTML();
 
