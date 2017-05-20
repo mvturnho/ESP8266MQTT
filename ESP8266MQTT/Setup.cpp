@@ -38,7 +38,7 @@ void Setup::readSettingsFromEeprom(void) {
 	mqttclientid = readStringEeprom(WiFi.macAddress(), MQTC_EPOS, 32);
 	mqttuser = readStringEeprom(mqttuser, MQTU_EPOS, 16);
 	mqttpassword = readStringEeprom(mqttpassword, MQTW_EPOS, 16);
-	Serial.println("MQTT SERVER: " + mqtthost + ":" + mqttport + "/" + mqttdevice + "." + mqttlocation);
+	Serial.println("MQTT SERVER: " + mqtthost + ":" + mqttport + " device: " + mqttdevice + "/" + mqttlocation);
 	Serial.println("MQTT Cliet ID: " + mqttclientid);
 
 	String snumleds = String(numleds);

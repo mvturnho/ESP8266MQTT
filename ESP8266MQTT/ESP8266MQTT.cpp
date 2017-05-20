@@ -211,22 +211,25 @@ void connect() {
 	Serial.println("connected!");
 	digitalWrite(LED_PIN, HIGH);
 	//subscribe to setup
-	client.subscribe(iotsetup.getMqttdevice() + "." + iotsetup.getMqttlocation() + "." + subscriber_setupmode_id);
+	String dev_topic = iotsetup.getMqttdevice() + "/" + iotsetup.getMqttlocation();
+	client.subscribe(dev_topic + "/" + subscriber_setupmode_id);
 	//subscribe to output
 	if (i2cexp.hasIOexpander()) {
 		for (int i = 0; i < iotsetup.getNumoutputs(); i++) {
-			Serial.println("Subscribe: " + iotsetup.getMqttdevice() + "." + iotsetup.getMqttlocation() + "." + subscriber_out_id + "." + i);
-			client.subscribe(iotsetup.getMqttdevice() + "." + iotsetup.getMqttlocation() + "." + subscriber_out_id + "." + i);
+			String topic = dev_topic + "/" + subscriber_out_id + "/" + i;
+			Serial.println("Subscribe: " + topic);
+			client.subscribe(topic);
 		}
-		client.subscribe(iotsetup.getMqttdevice() + "." + iotsetup.getMqttlocation() + "." + subscriber_out_id + ".*");
+		client.subscribe(dev_topic + "/" + subscriber_out_id + "/*");
 	}
 	//subscribe to rgb
 	if (i2cexp.hasPWM()) {
 		for (int i = 0; i < (iotsetup.getNumleds()); i++) {
-			Serial.println("Subscribe: " + iotsetup.getMqttdevice() + "." + iotsetup.getMqttlocation() + "." + subscriber_rgb_id + "." + i);
-			client.subscribe(iotsetup.getMqttdevice() + "." + iotsetup.getMqttlocation() + "." + subscriber_rgb_id + "." + i);
+			String topic = dev_topic + "/" + subscriber_rgb_id + "/" + i;
+			Serial.println("Subscribe: " + topic);
+			client.subscribe(topic);
 		}
-		client.subscribe(iotsetup.getMqttdevice() + "." + iotsetup.getMqttlocation() + "." + subscriber_rgb_id + ".*");
+		client.subscribe(dev_topic + "/" + subscriber_rgb_id + "/*");
 	}
 }
 
@@ -234,10 +237,10 @@ void pubswitch(int pin, const char* topic) {
 	Serial.print("SW press ");
 
 	if (sw[pin].state == 0) {
-		client.publish(iotsetup.getMqttdevice() + "." + iotsetup.getMqttlocation() + "." + topic + "." + pin, "off");
+		client.publish(iotsetup.getMqttdevice() + "/" + iotsetup.getMqttlocation() + "/" + topic + "/" + pin, "off");
 		Serial.println(topic + String(pin) + "= off");
 	} else {
-		client.publish(iotsetup.getMqttdevice() + "." + iotsetup.getMqttlocation() + "." + topic + "." + pin, "on");
+		client.publish(iotsetup.getMqttdevice() + "/" + iotsetup.getMqttlocation() + "/" + topic + "/" + pin, "on");
 		Serial.println(topic + String(pin) + "= on");
 	}
 }
@@ -317,7 +320,7 @@ void sendData() {
 	char buffer[200];
 	int size = root.printTo(buffer, sizeof(buffer));
 
-	client.publish(String(iotsetup.getMqttdevice() + "." + iotsetup.getMqttlocation() + "." + publisher_json_id).c_str(), buffer, size);
+	client.publish(String(iotsetup.getMqttdevice() + "/" + iotsetup.getMqttlocation() + "/" + publisher_json_id).c_str(), buffer, size);
 
 //root.prettyPrintTo(Serial);
 //Serial.print("\n");
@@ -330,8 +333,8 @@ void messageReceived(String topic, String payload, char * bytes, unsigned int le
 	Serial.print(payload);
 	Serial.println();
 
-	if (topic.startsWith(iotsetup.getMqttdevice() + "." + iotsetup.getMqttlocation() + "." + subscriber_rgb_id)) {
-		int ind = (iotsetup.getMqttdevice() + "." + iotsetup.getMqttlocation() + "." + subscriber_rgb_id).length();
+	if (topic.startsWith(iotsetup.getMqttdevice() + "/" + iotsetup.getMqttlocation() + "/" + subscriber_rgb_id)) {
+		int ind = (iotsetup.getMqttdevice() + "/" + iotsetup.getMqttlocation() + "/" + subscriber_rgb_id).length();
 		String indstr = topic.substring(ind + 1, ind + 2);
 		int pwmindex = indstr.toInt();
 		//uint8_t pwmnum = pwmindex * 3;
@@ -351,6 +354,9 @@ void messageReceived(String topic, String payload, char * bytes, unsigned int le
 		} else if (payload.startsWith("ani")) {
 			Serial.println(" ANIMATION ");
 			pwmcontr.setAnimate(indstr, payload);
+		} else if (payload.startsWith("pulse")) {
+			Serial.println(" PULSE ");
+			pwmcontr.setPulse(indstr, payload);
 		} else if (payload.startsWith("fad")) {
 			Serial.println(" FADE ");
 			pwmcontr.setFade(indstr, payload);
@@ -358,9 +364,9 @@ void messageReceived(String topic, String payload, char * bytes, unsigned int le
 			Serial.println(" SWITCH ");
 			pwmcontr.switchLedStrip(indstr, payload);
 		}
-	} else if (topic.startsWith(iotsetup.getMqttdevice() + "." + iotsetup.getMqttlocation() + "." + subscriber_out_id)) {
+	} else if (topic.startsWith(iotsetup.getMqttdevice() + "/" + iotsetup.getMqttlocation() + "/" + subscriber_out_id)) {
 		Serial.println("SWITCH - " + topic);
-		int index = (iotsetup.getMqttdevice() + "." + iotsetup.getMqttlocation() + "." + subscriber_out_id).length();
+		int index = (iotsetup.getMqttdevice() + "/" + iotsetup.getMqttlocation() + "/" + subscriber_out_id).length();
 		String snum = topic.substring(index + 1);
 		uint8_t status;
 		if (snum.equals("*")) {
@@ -399,7 +405,7 @@ void messageReceived(String topic, String payload, char * bytes, unsigned int le
 			}
 
 		}
-	} else if (topic.equals(iotsetup.getMqttdevice() + "." + iotsetup.getMqttlocation() + "." + subscriber_setupmode_id)) {
+	} else if (topic.equals(iotsetup.getMqttdevice() + "/" + iotsetup.getMqttlocation() + "/" + subscriber_setupmode_id)) {
 		setupAP();
 		ap_mode = true;
 	} else

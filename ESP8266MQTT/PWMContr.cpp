@@ -109,9 +109,9 @@ void PWMContr::hslLedStrip(String pwmstr, String payload) {
 	int s = 0;
 	int l = 0;
 
-	if(control[pwmindex].anim > 0) {
-		sh="?";
-		ss="?";
+	if (control[pwmindex].anim > 0) {
+		sh = "?";
+		ss = "?";
 	}
 
 	if (sh.equals("?"))
@@ -128,7 +128,15 @@ void PWMContr::hslLedStrip(String pwmstr, String payload) {
 		l = sl.toInt();
 
 //Serial.println("HSL:" + sh + "," + ss + "," + sl);
-	setHSL(pwmindex, h, s, l);
+
+	if (pwmstr.equals("*")) {
+		for (int i = 0; i < numleds; i++) {
+			setHSL(i, h, s, l);
+		}
+	} else {
+		int pwmindex = pwmstr.toInt();
+		setHSL(pwmindex, h, s, l);
+	}
 }
 
 void PWMContr::setPWM(int index, uint16_t *colors) {
@@ -231,8 +239,44 @@ void PWMContr::setAnimate(int index, String payload) {
 	}
 }
 
-void PWMContr::setFade(String pwmstr, String payload) {
+void PWMContr::setPulse(String pwmstr, String payload) {
 	if (pwmstr.equals("*")) {
+		for (int i = 0; i < numleds; i++)
+			setPulse(i, payload);
+
+	} else {
+		int stripindex = pwmstr.toInt();
+		setPulse(stripindex, payload);
+	}
+}
+
+void PWMContr::setPulse(int index, String payload) {
+	int time = control[index].pulse;
+	int light = 0;
+	int start = payload.indexOf('(');
+	String param = payload.substring(start + 1, payload.length() - 1);
+	start = param.indexOf(',');
+	int state = param.substring(0, start).toInt();
+	if (state == 1) {
+		int lstart = param.indexOf(',', start + 1);
+		time = param.substring(start + 1, lstart).toInt();
+
+		String lights = param.substring(lstart + 1, param.length());
+		//Serial.println("lights=" + lights + " start=" + start + " lstart=" + lstart);
+		if (!lights.equals("?"))
+			control[index].hsl[Ls] = lights.toInt();
+		control[index].pulse = time;
+	} else {
+		control[index].pulse = 0;
+	}
+
+	//Serial.println("state=" + String(state) + " pulsetime=" + String(time) + " Light=" + String(control[index].hsl[L]));
+
+	setFade(index, state, time);
+}
+
+void PWMContr::setFade(String pwmstr, String payload) {
+	if (pwmstr.equals("*")) { //all led strips on device
 		for (int i = 0; i < numleds; i++)
 			setFade(i, payload);
 	} else {
@@ -243,27 +287,45 @@ void PWMContr::setFade(String pwmstr, String payload) {
 
 void PWMContr::setFade(int index, String payload) {
 	int start = payload.indexOf('(');
+	int time = 0;
+	int light = 0;
 	String param = payload.substring(start + 1, payload.length() - 1);
 	start = param.indexOf(',');
-	String state = param.substring(0, start);
-	String time = param.substring(start + 1, param.length());
-	Serial.println("state=" + state + " fadetime=" + time);
+	int state = param.substring(0, start).toInt();
+//	String time = param.substring(start + 1, param.length());
+//	Serial.println("state=" + state + " fadetime=" + time);
 
-	if (state.toInt() != control[index].state) {
-		control[index].state = state.toInt();
-		control[index].fade = time.toInt();
+	if (state == 1) {
+		int lstart = param.indexOf(',', start + 1);
+		time = param.substring(start + 1, lstart).toInt();
+		String lights = param.substring(lstart + 1, param.length());
+		if (!lights.equals("?")) //use current Light or new value
+			control[index].hsl[Ls] = lights.toInt();
+		//Serial.println("lights=" + lights + " start=" + start + " lstart=" + lstart);
+	} else {
+		int lstart = param.indexOf(',', start + 1);
+		time = param.substring(start + 1, param.length()).toInt();
+	}
 
-		if (control[index].state == 0)
-			control[index].hsl[Ls] = control[index].hsl[L];  //save the bright for fade in or switch on
-		else if (control[index].hsl[Ls] == control[index].hsl[L])
-			control[index].hsl[L] = 0;
+	if (state != control[index].state) {
+		setFade(index, state, time);
 	}
 }
 
+void PWMContr::setFade(int index, int state, int time) {
+	control[index].state = state;
+	control[index].fade = time;
+
+	if (control[index].state == 0)
+		control[index].hsl[Ls] = control[index].hsl[L];  //save the bright for fade in or switch on
+	else if (control[index].hsl[Ls] == control[index].hsl[L])
+		control[index].hsl[L] = 0;
+}
+
 void PWMContr::animate(void) {
-	for (int i = 0; i < numleds; i++) {
-		if (control[i].state == 1) {
-			if (control[i].anim > 0) {
+	for (int i = 0; i < numleds; i++) { //LOOP all led strips
+		if (control[i].state == 1) {  //STATE is on
+			if (control[i].anim > 0) {  //ANIMATION HANDLE
 				if (millis() - control[i].animLastMillis > control[i].anim) {
 					control[i].animLastMillis = millis();
 					//Serial.println("anim: " + String(i));
@@ -276,29 +338,34 @@ void PWMContr::animate(void) {
 					control[i].colorcounter = (control[i].colorcounter + 1) % (control[i].numColors * 2);
 				}
 			}
-
-			if ((control[i].fade > 0) && (control[i].hsl[L] < control[i].hsl[Ls])) {
+			if ((control[i].fade > 0) && (control[i].hsl[L] < control[i].hsl[Ls])) {  //FADE IN HANDLE
 				if (millis() - control[i].fadeLastMillis > control[i].fade) {
 					control[i].fadeLastMillis = millis();
 					control[i].hsl[L]++;
 					setHSL(i);
 					//Serial.print(">");
 				}
-			} else
-				control[i].fade = 0;
-
-		} else {
-			if ((control[i].fade > 0) && (control[i].hsl[L] > 0)) {
+			} else {
+				if (control[i].pulse > 0) {  //PULSE FADE OUT INITIALIZE
+					setFade(i, 0, control[i].pulse);
+				}
+			}
+		} else {  //STATE is OFF
+			if ((control[i].fade > 0) && (control[i].hsl[L] > 0)) {  //FADE OUT HANDLE
 				if (millis() - control[i].fadeLastMillis > control[i].fade) {
 					control[i].fadeLastMillis = millis();
 					control[i].hsl[L]--;
 					setHSL(i);
 					//Serial.print("<");
 				}
-			} else
-				control[i].fade = 0;
+			} else {
+				//PULSE FADE IN INITIALIZE
+				if (control[i].pulse > 0) {
+					setFade(i, 1, control[i].pulse);
+				}
+			}
 		}
-		yield();
+		yield(); //service ESP8266 WIFI
 	}
 }
 
